@@ -4,7 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![stability-alpha](https://img.shields.io/badge/stability-alpha-f4d03f.svg)](https://github.com/mkenney/software-guides/blob/master/STABILITY-BADGES.md#alpha)
 
-A minimal library for generating mock SKA observations of the SZ effect.
+A minimal library for generating mock SKA observations of the SZ effect. 
+
+This package relies _heavily_ on RASCIL and the [SKA Science Data Processor](https://gitlab.com/ska-telescope/sdp) (SKA SDP) packages, and makes use of dedicated portings of parts of the [Karabo pipeline](https://github.com/i4Ds/Karabo-Pipeline) and of the python backed of the [SKA Sensitivity Calculator](https://gitlab.com/ska-telescope/ost/ska-ost-senscalc).
 
 ## Installation
 
@@ -30,7 +32,7 @@ Once the installation is completed, you should be ready to go and fire `skasz` u
 - When importing `skasz` for the first time, it will ask you whether you would like to download the [RASCIL data](https://gitlab.com/ska-telescope/external/rascil-main/-/tree/master/data?ref_type=heads) package. This is essential for running some simulations, and it shouldn't take too long. <br>
 From time to time, it might happen that the `ska-telescope` servers results to be unreachable. In such a case, you can retrigger the download by re-loading `skasz` or by running `skasz.download_rascil_data()` from a python shell. <br>
 For information on the RASCIL data package, you can take a look at the official [documentation page](https://rascil-main.readthedocs.io/en/latest/RASCIL_install.html#installation-via-pip) for RASCIL.
-- When performing standard operations with `skasz`, you might get a bunch of future and deprecation warnings. This is due to some updates in the dependencies of RASCIL and of the [SKA Science Data Processor](https://gitlab.com/ska-telescope/sdp) packages. They should not introduce any issue with the simulation, and, as such, can be neglected.
+- When performing standard operations with `skasz`, you might get a bunch of future and deprecation warnings. This is due to some updates in the dependencies of RASCIL and of the SKA SDP packages. They should not introduce any issue with the simulation, and, as such, can be neglected.
 
 ## Example
 This is a basic example of how to use `skasz` for generating mock SZ observations from an input FITS file, and to obtain noise-free and noisy dirty images.
