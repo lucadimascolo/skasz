@@ -1,0 +1,28 @@
+Primary
+=======
+SKA Sky Blue
+C100 M0 Y0 K0
+R0 G174 B239
+#00aeef
+
+SKA Ocean Blue
+C100 M73 Y0 K2
+R0 G84 B164
+#0054a4
+
+SKA Teal Blue
+C100 M58 Y36 K0
+R0 G104 B138
+#00688a
+
+Secondary
+=========
+SKA Burnt Sun
+C4 M57 Y100 K0
+R236 G134 B35
+#ec8623
+
+SKA Earth Green
+C40 M0 Y100 K0
+R166 G206 B57
+#a6ce39

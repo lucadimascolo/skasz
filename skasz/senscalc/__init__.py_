@@ -1,0 +1,69 @@
+"""Module containing Sensitivity Calculator modules
+"""
+import json
+import os
+from importlib.metadata import version
+from os import getenv
+from typing import Any
+
+import connexion
+import prance
+from astropy.utils.misc import JsonCustomEncoder
+from flask.json.provider import JSONProvider
+
+KUBE_NAMESPACE = getenv("KUBE_NAMESPACE", "ska-ost-senscalc")
+SENSCALC_MAJOR_VERSION = version("ska-ost-senscalc").split(".")[0]
+# The base path includes the namespace which is known at runtime
+# to avoid clashes in deployments, for example in CICD
+API_PATH = f"/{KUBE_NAMESPACE}/senscalc/api/v{SENSCALC_MAJOR_VERSION}"
+
+
+# Resolves the $ref in the OpenAPI spec before it is used by Connexion,
+# as Connexion v2 can't resolve external references.
+# See https://github.com/spec-first/connexion/issues/967
+def get_openapi_spec(specpath: str) -> dict[str, Any]:
+    cwd, _ = os.path.split(__file__)
+    path = os.path.join(cwd, specpath)
+    parser = prance.ResolvingParser(path, lazy=True, strict=True)
+    parser.parse()
+    return parser.specification
+
+
+class AstropyJSONProvider(JSONProvider):
+    def dumps(self, obj, *args, **kwargs):
+        return json.dumps(obj, cls=JsonCustomEncoder)
+
+    def loads(self, s, **kwargs):
+        return json.loads(s)
+
+
+def create_app():
+    """
+    Create the Connexion application with required config
+    """
+    connexion_app = connexion.App(__name__, specification_dir="static/")
+    app = connexion_app.app
+    app.json = AstropyJSONProvider(app)
+
+    def set_default_headers_on_response(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
+
+    app.after_request(set_default_headers_on_response)
+
+    resolved_mid_spec = get_openapi_spec("./static/openapi-mid.yaml")
+    resolved_low_spec = get_openapi_spec("./static/openapi-low.yaml")
+
+    connexion_app.add_api(
+        resolved_mid_spec,
+        base_path=f"{API_PATH}/mid",
+        validate_responses=True,
+    )
+
+    connexion_app.add_api(
+        resolved_low_spec,
+        base_path=f"{API_PATH}/low",
+        validate_responses=True,
+    )
+
+    return connexion_app

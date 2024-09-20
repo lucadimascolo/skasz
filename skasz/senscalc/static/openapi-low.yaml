@@ -1,0 +1,420 @@
+---
+openapi: "3.0.0"
+info:
+  title: "SKA LOW Sensitivity Calculator API"
+  description: |
+    The SKA LOW Sensitivity Calculator API offers three modes: continuum, zoom and PSS. 
+    Each of these has an API resource to calculate a sensitivity for an observation.
+    Continuum and zoom have another to retrieve information relating to image weighting (beam-size and relative sensitivity). 
+    There is also a resource for obtaining subarray information.
+  license:
+    name: BSD-3-Clause
+    url: https://opensource.org/licenses/BSD-3-Clause
+  version: "10.1.0"
+paths:
+  /subarrays:
+    get:
+      description: Returns the array configurations available
+      operationId: ska_ost_senscalc.low.api.subarrays
+      responses:
+        '200':
+          description: Successful response with the list of array configurations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: name of the subarray
+                      example: "LOW_AA4_all"
+                    label:
+                      type: string
+                      description: label of the subarray in the front-end drop down menu
+                      example: "AA4"
+                    n_stations:
+                      description: number of SKA LOW stations in the subarray
+                      type: integer
+                      minimum: 0
+                      maximum: 512
+                      example: 512
+                  required:
+                    - name
+                    - label
+                    - n_stations
+  /continuum/calculate:
+    get:
+      description: >
+        Calculates a sensitivity given an integration for the continuum mode. 
+        The result contains a continuum calculation for the full window and a spectral line calculation.
+        These should then each be combined with a response from the weighting endpoint for the respective spectral mode.
+      operationId: ska_ost_senscalc.low.api.continuum_calculate
+      parameters:
+        - $ref: '#/components/parameters/LowSubarrayConfigurationForContinuum'
+        - $ref: '#/components/parameters/NumStations'
+        - $ref: '#/components/parameters/IntegrationTime'
+        - $ref: '#/components/parameters/OptionalPointingCentre'
+        - $ref: '#/components/parameters/ElevationLimit'
+        - $ref: '#/components/parameters/OptionalFreqCentre'
+        - $ref: '#/components/parameters/SpectralAveragingFactorForContinuum'
+        - name: bandwidth_mhz
+          description: Bandwidth for the continuum observation in MHz. Combined with the freq_centre_mhz, it must define a spectral window that is contained within the Low frequency range.
+          in: query
+          example: 300
+          required: false
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+            maximum: 300
+        - name: n_subbands
+          in: query
+          required: false
+          description: >
+            If this parameter is provided, the 'subbands' field in the response body will contain a sensitivity result 
+            for each sub-band, which is calculated by dividing the bandwidth in N sub-bands. If the value is given as 1 then 
+            this is equal to the main sensitivity calculation so no 'subbands' are returned in the response.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 32
+      responses:
+        '200':
+          $ref: '#/components/responses/ContinuumSensitivitySuccess'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+  /continuum/weighting:
+    get:
+      description: >
+        Retrieve the parameters related to weighting (e.g. beam-size and relative sensitivity). The spectral_mode parameter determines whether
+        results are retrieved for a continuum or spectral (line) observation.
+      operationId: ska_ost_senscalc.low.api.continuum_weighting
+      parameters:
+        - $ref: 'openapi-common.yaml#/components/parameters/SpectralMode'
+        - $ref: 'openapi-common.yaml#/components/parameters/WeightingMode'
+        - $ref: 'openapi-common.yaml#/components/parameters/Robustness'
+        - $ref: '#/components/parameters/LowSubarrayConfigurationForContinuum'
+        - $ref: 'openapi-common.yaml#/components/parameters/RequiredPointingCentre'
+        - $ref: '#/components/parameters/RequiredFreqCentre'
+        - name: subband_freq_centres_mhz
+          in: query
+          required: false
+          description: Central frequency of each sub-band in MHz. Providing sub-band frequencies enables the provision of additional weighting outputs.
+          schema:
+            type: array
+            items:
+              type: number
+      responses:
+        '200':
+          description: Successful response with the continuum weighting and weighting for subbands, if applicable
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-common.yaml#/components/schemas/ContinuumWeightingResult'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+        '5XX':
+          $ref: 'openapi-common.yaml#/components/responses/InternalServerError'
+  /zoom/calculate:
+    get:
+      description: >
+        Calculates an integration time in seconds given a target sensitivity (or vice-versa) for the zoom mode. 
+        The result contains a spectral line calculation for the given zoom window. This should then each be combined 
+        with a response from the weighting endpoint.
+      operationId: ska_ost_senscalc.low.api.zoom_calculate
+      parameters:
+        - $ref: '#/components/parameters/LowSubarrayConfigurationForZoom'
+        - $ref: '#/components/parameters/NumStations'
+        - $ref: '#/components/parameters/IntegrationTime'
+        - $ref: '#/components/parameters/OptionalPointingCentre'
+        - $ref: '#/components/parameters/ElevationLimit'
+        - $ref: '#/components/parameters/FreqCentres'
+        - $ref: '#/components/parameters/SpectralAveragingFactorForZoom'
+        - name: spectral_resolutions_hz
+          description: Spectral resolution/channel width of each of the the zoom window. The channel width of the narrowest zoom window is given by (781250 * 32/27)/(4096 * 16) = 14.129 Hz (rounded to 3 d.p.). The only other validation prevents the spectral resolution from exceeding the bandwidth of the largest zoom window.
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: number
+              minimum: 14.1
+              maximum: 1808.5
+              example: 14.129
+        - name: total_bandwidths_khz
+          description: The total bandwidth of each of the zoom windows in kHz. Combined with the freq_centres_mhz, each must define a spectral window that is contained within the Low frequency range. The value must correspond to the bandwidth of one of seven LOW zoom windows, to within 0.1 kHz.
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: number
+              minimum: 24.4
+              maximum: 3125.0
+              example: 24.414
+      responses:
+        '200':
+          $ref: '#/components/responses/ZoomSensitivitySuccess'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+  /zoom/weighting:
+    get:
+      description: >
+        Compute the weighting correction factor to apply to the continuum calculation. 
+        As zoom mode currently only displays the spectral sensitivity/integration time, this weighting endpoint 
+        will always use the 'line' spectral mode in the look up table.
+      operationId: ska_ost_senscalc.low.api.zoom_weighting
+      parameters:
+        - $ref: 'openapi-common.yaml#/components/parameters/WeightingMode'
+        - $ref: 'openapi-common.yaml#/components/parameters/Robustness'
+        - $ref: '#/components/parameters/LowSubarrayConfigurationForZoom'
+        - $ref: 'openapi-common.yaml#/components/parameters/RequiredPointingCentre'
+        - $ref: '#/components/parameters/FreqCentres'
+      responses:
+        '200':
+          description: Successful response with the weighting for each zoom window
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-common.yaml#/components/schemas/ZoomWeightingResult'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+        '5XX':
+          $ref: 'openapi-common.yaml#/components/responses/InternalServerError'
+  /pss/calculate:
+    get:
+      description: Calculate the sensitivity of an SKA LOW observation in PSS mode for the input parameters.
+      operationId: ska_ost_senscalc.low.api.pss_calculate
+      parameters:
+        - $ref: '#/components/parameters/LowSubarrayConfigurationForPSS'
+        - $ref: '#/components/parameters/NumStations'
+        - $ref: '#/components/parameters/IntegrationTime'
+        - $ref: '#/components/parameters/OptionalPointingCentre'
+        - $ref: '#/components/parameters/ElevationLimit'
+        - $ref: '#/components/parameters/OptionalFreqCentre'
+        - name: dm
+          description: Dispersion Measure in pc/cm^3
+          in: query
+          example: 14.0
+          required: false
+          schema:
+            type: number
+            minimum: 0
+        - name: intrinsic_pulse_width
+          description: Intrinsic pulse width in milliseconds. This must be less than the pulse period.
+          in: query
+          example: 0.004
+          required: false
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: True
+        - name: pulse_period
+          description: Pulse period in milliseconds.
+          in: query
+          example: 33.0
+          required: false
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: True
+      responses:
+        '200':
+          $ref: '#/components/responses/PSSSensitivitySuccess'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+components:
+  parameters:
+    NumStations:
+      name: num_stations
+      description: The number of LOW antenna stations. If set, subarray_configuration should not be set.
+      in: query
+      required: false
+      schema:
+        type: number
+        minimum: 2
+        maximum: 512
+    IntegrationTime:
+      name: integration_time_h
+      description: The integration time of the observation in hours
+      in: query
+      example: 1
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        exclusiveMinimum: true
+    OptionalPointingCentre:
+      name: pointing_centre
+      description: Pointing centre in HH:MM:SS[.ss] [+|-]DD:MM:SS[.ss]
+      in: query
+      example: 10:00:00.0 -30:00:00.0
+      required: false
+      schema:
+        type: string
+    OptionalFreqCentre:
+      name: freq_centre_mhz
+      description: Central frequency in MHz. Combined with the bandwidth_mhz, it must define a spectral window that is contained within the Low frequency range.
+      in: query
+      example: 200
+      required: false
+      schema:
+        type: number
+        minimum: 50
+        maximum: 350
+    RequiredFreqCentre:
+      name: freq_centre_mhz
+      description: Central frequency in MHz. Combined with the bandwidth_mhz, it must define a spectral window that is contained within the Low frequency range.
+      in: query
+      example: 200
+      required: true
+      schema:
+        type: number
+        minimum: 50
+        maximum: 350
+    FreqCentres:
+      name: freq_centres_mhz
+      description: Array of the central frequency of each zoom windows in MHz. Combined with the total_bandwidths_khz, each must define a spectral window that is contained within the Low frequency range.
+      in: query
+      required: false
+      schema:
+        type: array
+        items:
+          type: number
+          minimum: 50
+          maximum: 350
+          example: 200
+    SpectralAveragingFactorForContinuum:
+      name: spectral_averaging_factor
+      description: Factor by which the spectral resolution should be averaged to calculate the effective resolution which is used in the calculation. The number of channels is set by the continuum bandwidth and the maximum value of the spectral averaging factor is half that number.
+      in: query
+      example: 1
+      required: false
+      schema:
+        type: number
+        minimum: 1
+    SpectralAveragingFactorForZoom:
+      name: spectral_averaging_factor
+      description: Factor by which the spectral resolution should be averaged to calculate the effective resolution which is used in the calculation. The maximum value is set to half the number of channels in a zoom window.
+      in: query
+      example: 1
+      required: false
+      schema:
+        type: number
+        minimum: 1
+        maximum: 864
+    ElevationLimit:
+      name: elevation_limit
+      description: Lowest elevation that the LOW observation will be performed at. The maximum value is nominally 90 degrees, but the enforced limit is actually the highest elevation that can be achieved given the source declination and the latitude of the telescope.
+      in: query
+      example: 20
+      required: false
+      schema:
+        type: number
+        minimum: 15
+        maximum: 90
+    LowSubarrayConfigurationForContinuum:
+      name: subarray_configuration
+      in: query
+      description: Enumeration of the SKA LOW subarray configurations allowed for a continuum calculation. To define a custom configuration, set num_stations and do not set this parameter.
+      required: false
+      example: LOW_AA4_all
+      schema:
+        type: string
+        enum:
+          - "LOW_AA05_all"
+          - "LOW_AA1_all"
+          - "LOW_AA2_all"
+          - "LOW_AA2_core_only"
+          - "LOW_AAstar_all"
+          - "LOW_AAstar_core_only"
+          - "LOW_AA4_all"
+          - "LOW_AA4_core_only"
+    LowSubarrayConfigurationForZoom:
+      name: subarray_configuration
+      in: query
+      description: Enumeration of the SKA LOW subarray configurations allowed for a zoom calculation. To define a custom configuration, set num_stations and do not set this parameter.
+      required: false
+      example: LOW_AA4_all
+      schema:
+        type: string
+        enum:
+          - "LOW_AA2_all"
+          - "LOW_AA2_core_only"
+          - "LOW_AAstar_all"
+          - "LOW_AAstar_core_only"
+          - "LOW_AA4_all"
+          - "LOW_AA4_core_only"
+    LowSubarrayConfigurationForPSS:
+      name: subarray_configuration
+      in: query
+      description: Enumeration of the SKA LOW subarray configurations allowed for a PSS calculation. To define a custom configuration, set num_stations and do not set this parameter.
+      required: false
+      example: LOW_AA4_all
+      schema:
+        type: string
+        enum:
+          - "LOW_AA2_core_only"
+          - "LOW_AAstar_core_only"
+          - "LOW_AA4_core_only"
+  responses:
+    ContinuumSensitivitySuccess:
+      description: Successful response with the results of the continuum sensitivity calculation.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              continuum_sensitivity:
+                $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+              continuum_subband_sensitivities:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    subband_freq_centre:
+                      $ref: 'openapi-common.yaml#/components/schemas/FrequencyWithUnit'
+                    sensitivity:
+                      $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+              spectral_sensitivity:
+                $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+              spectropolarimetry_results:
+                $ref: 'openapi-common.yaml#/components/schemas/SpectropolarimetryResults'
+              warning:
+                type: string
+                nullable: true
+                example: The specified pointing contains at least one source brighter than 10.0 Jy. Your observation may be dynamic range limited.
+    ZoomSensitivitySuccess:
+      description: Successful response with the results of the zoom sensitivity calculation.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                freq_centre:
+                  $ref: 'openapi-common.yaml#/components/schemas/FrequencyWithUnit'
+                spectral_sensitivity:
+                  $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+                spectropolarimetry_results:
+                  $ref: 'openapi-common.yaml#/components/schemas/SpectropolarimetryResults'
+                warning:
+                  type: string
+                  nullable: true
+                  example: The specified pointing contains at least one source brighter than 10.0 Jy. Your observation may be dynamic range limited.
+    PSSSensitivitySuccess:
+      description: Successful response with the results of the PSS sensitivity calculation.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              folded_pulse_sensitivity:
+                $ref: 'openapi-common.yaml#/components/schemas/PulsarSensitivity'
+              warning:
+                type: string
+                nullable: true
+                example: The specified pointing contains at least one source brighter than 10.0 Jy. Your observation may be dynamic range limited.

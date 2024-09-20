@@ -1,0 +1,211 @@
+components:
+  parameters:
+    ### Common general parameters ###
+    RequiredPointingCentre:
+      name: pointing_centre
+      description: Pointing centre in HH:MM:SS[.ss] [+|-]DD:MM:SS[.ss]
+      in: query
+      example: 10:00:00.0 -30:00:00.0
+      required: true
+      schema:
+        type: string
+    ### Common sensitivity calculation parameters ###
+    ### Common weighting parameters ###
+    SpectralMode:
+      name: spectral_mode
+      description: |
+        Enumeration of the spectral mode to use to in the weighting look up table.
+      in: query
+      example: 'continuum'
+      required: true
+      schema:
+        type: string
+        enum:
+          - 'continuum'
+          - 'line'
+    WeightingMode:
+      name: weighting_mode
+      description: Enumeration of the weighting strategy used.
+      in: query
+      required: true
+      example: uniform
+      schema:
+        type: string
+        enum:
+          - natural
+          - robust
+          - uniform
+    Robustness:
+      name: robustness
+      description: Robust parameter. Only required and considered if the weighting is set to robust.
+      required: false
+      in: query
+      example: 0
+      schema:
+        type: number
+        enum:
+          - -2
+          - -1
+          - 0
+          - 1
+          - 2
+  schemas:
+    ### Schemas for calculate response values with units ###
+    FrequencyWithUnit:
+      type: object
+      properties:
+        value:
+          type: number
+          example: 600
+        unit:
+          type: string
+          example: "MHz"
+    ImageSensitivity:
+      type: object
+      properties:
+        value:
+          type: number
+          example: 55
+        unit:
+          type: string
+          example: "uJy / beam"
+    PulsarSensitivity:
+      type: object
+      properties:
+        value:
+          type: number
+          example: 100
+        unit:
+          type: string
+          example: "uJy"
+    SpectropolarimetryValueWithUnit:
+      type: object
+      properties:
+        value:
+          type: number
+          example: 100
+        unit:
+          type: string
+          example: "rad / m2"
+    ### Schemas for weighting response values ###
+    WeightingFactor:
+      type: number
+      description: Weighting correction factor
+    SBSConversionFactor:
+      type: number
+      description: Surface-brightness-sensitivity conversion factor
+    ConfusionNoise:
+        type: object
+        properties:
+          value:
+            description: Confusion noise for given beam size and frequency
+            type: number
+          limit_type:
+            type: string
+            enum:
+              - "upper limit"
+              - "lower limit"
+              - "value"
+            description: Whether the confusion noise is a limit or value
+            example: value
+        required:
+          - value
+          - limit_type
+    BeamSize:
+      type: object
+      properties:
+        beam_maj_scaled:
+          type: number
+          description: Beam major axis for given frequency
+          example: 1
+        beam_min_scaled:
+          type: number
+          description: Beam minor axis for given frequency
+          example: 1
+        beam_pa:
+          type: number
+          description: Beam position angle
+          example: 1
+      required:
+        - beam_maj_scaled
+        - beam_min_scaled
+        - beam_pa
+    ### Schemas for API response objects ###
+    ContinuumWeightingResult:
+      allOf:
+        - $ref: '#/components/schemas/SingleWeightingResult'
+        - type: object
+          properties:
+            subbands:
+              type: array
+              items:
+                $ref: '#/components/schemas/WeightingSubbandResult'
+    ZoomWeightingResult:
+        type: array
+        items:
+          $ref: '#/components/schemas/SingleWeightingZoomResult'
+    SingleWeightingResult:
+      type: object
+      properties:
+        weighting_factor:
+          $ref: '#/components/schemas/WeightingFactor'
+        sbs_conv_factor:
+          $ref: '#/components/schemas/SBSConversionFactor'
+        confusion_noise:
+          $ref: '#/components/schemas/ConfusionNoise'
+        beam_size:
+          $ref: '#/components/schemas/BeamSize'
+      required:
+        - weighting_factor
+        - sbs_conv_factor
+        - confusion_noise
+        - beam_size
+    SingleWeightingZoomResult:
+      allOf:
+        - $ref: '#/components/schemas/SingleWeightingResult'
+        - type: object
+          properties:
+            freq_centre:
+                $ref: '#/components/schemas/FrequencyWithUnit'
+    WeightingSubbandResult:
+      allOf:
+        - $ref: '#/components/schemas/SingleWeightingResult'
+        - type: object
+          properties:
+            subband_frequency:
+                $ref: '#/components/schemas/FrequencyWithUnit'
+    SpectropolarimetryResults:
+      type: object
+      properties:
+        fwhm_of_the_rmsf:
+          $ref: '#/components/schemas/SpectropolarimetryValueWithUnit'
+        max_faraday_depth_extent:
+          $ref: '#/components/schemas/SpectropolarimetryValueWithUnit'
+        max_faraday_depth:
+          $ref: '#/components/schemas/SpectropolarimetryValueWithUnit'
+    ErrorModel:
+      description: Encapsulation of an error message with accompanying details or stacktrace
+      type: object
+      properties:
+        title:
+          type: string
+          example: Bad Request
+        detail:
+          type: string
+          example: Maximum bandwidth (75 MHz) for this subarray has been exceeded.
+      required:
+        - title
+        - detail
+  responses:
+    BadRequest:
+      description: Request parameters failed validation, either against the OpenAPI spec or the domain specific validation,eg the spectral window not lying within the allowed range.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorModel'
+    InternalServerError:
+      description: An error occurred making the calculation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorModel'

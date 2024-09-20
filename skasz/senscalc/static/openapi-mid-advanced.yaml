@@ -1,0 +1,165 @@
+components:
+  parameters:
+    SystemEfficiency:
+      name: eta_system
+      in: query
+      description: >
+        System efficiency. If provided, will be used instead of calculating it from
+        eta_pointing, eta_coherence, eta_digitisation, eta_bandpass and eta_correlation
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    PointingEfficiency:
+      name: eta_pointing
+      in: query
+      description: Pointing efficiency
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    CoherenceEfficiency:
+      name: eta_coherence
+      in: query
+      description: Coherence efficiency
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    DigitisationEfficiency:
+      name: eta_digitisation
+      in: query
+      description: Digitisation efficiency
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    CorrelationEfficiency:
+      name: eta_correlation
+      in: query
+      description: Correlation efficiency
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    BandpassEfficiency:
+      name: eta_bandpass
+      in: query
+      description: Bandpass efficiency
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    SKASystemTemperature:
+      name: t_sys_ska
+      in: query
+      description: System Temperature of the 15-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    SKAReceiverTemperature:
+      name: t_rx_ska
+      in: query
+      description: Receiver Temperature of the 15-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    SKASpilloverTemperature:
+      name: t_spl_ska
+      in: query
+      description: Spillover Temperature of the 15-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    MeerKATSystemTemperature:
+      name: t_sys_meer
+      in: query
+      description: System Temperature of the 13.5-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    MeerKATReceiverTemperature:
+      name: t_rx_meer
+      in: query
+      description: Receiver Temperature of the 13.5-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    MeerKATSpilloverTemperature:
+      name: t_spl_meer
+      in: query
+      description: Spillover Temperature of the 13.5-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    SKASkyTemperature:
+      name: t_sky_ska
+      in: query
+      description: Sky temperature for 15-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    MeerKATSkyTemperature:
+      name: t_sky_meer
+      in: query
+      description: Sky temperature for 13.5-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    SKAGalacticTemperature:
+      name: t_gal_ska
+      in: query
+      description: Galactic temperature for 15-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    MeerKATGalacticTemperature:
+      name: t_gal_meer
+      in: query
+      description: Galactic temperature for 13.5-m antennas (K)
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    GalacticEmissionSpectralIndex:
+      name: alpha
+      in: query
+      description: Spectral index of Galactic emission
+      example: 2.75
+      required: false
+      schema:
+        type: number
+        minimum: 0
+    MeerKATDishEfficiency:
+      name: eta_meer
+      in: query
+      description: Dish efficiency for 13.5-m antennas
+      required: false
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    SKADishEfficiency:
+      name: eta_ska
+      in: query
+      description: Dish efficiency for 15-m antennas
+      required: false
+      schema:
+       type: number
+       minimum: 0
+       maximum: 1

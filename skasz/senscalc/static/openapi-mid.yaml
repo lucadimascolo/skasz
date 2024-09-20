@@ -1,0 +1,509 @@
+---
+openapi: "3.0.0"
+info:
+  title: "SKA MID Sensitivity Calculator API"
+  description: |
+    The SKA MID Sensitivity Calculator API offers two modes: continuum and zoom. 
+    Each of these has an API resource to calculate a sensitivity or integration time for an observation, 
+    and another to retrieve information relating to image weighting (beam-size and relative sensitivity). 
+    There is also a resource for obtaining subarray information.
+  license:
+    name: BSD-3-Clause
+    url: https://opensource.org/licenses/BSD-3-Clause
+  version: "10.1.0"
+paths:
+  /subarrays:
+    get:
+      description: Returns the array configurations available
+      operationId: ska_ost_senscalc.mid.api.subarrays
+      responses:
+        '200':
+          description: Successful response with the list of array configurations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      description: name of the subarray
+                      example: "SKA1"
+                    label:
+                      type: string
+                      description: label of the subarray in the front-end drop down menu
+                      example: "AA4 (15-m antennas only)"
+                    n_ska:
+                      description: Number of 15-m antennas in the subarray
+                      type: integer
+                      minimum: 0
+                      maximum: 133
+                      example: 133
+                    n_meer:
+                      description: Number of 13.5-m antennas in the subarray
+                      type: integer
+                      minimum: 0
+                      maximum: 64
+                      example: 0
+                  required:
+                    - name
+                    - label
+                    - n_ska
+                    - n_meer
+  /continuum/calculate:
+    get:
+      description: >
+        Calculates an integration time in seconds given a target sensitivity (or vice-versa) for the continuum mode. 
+        The result contains a continuum calculation for the full window and a spectral line calculation.
+        These should then each be combined with a response from the weighting endpoint for the respective spectral mode.
+      operationId: ska_ost_senscalc.mid.api.continuum_calculate
+      parameters:
+        - name: integration_time_s
+          description: >
+            The integration time of the observation in seconds. Should only be specified when calculating
+            sensitivity and sensitivity_jy parameter is not specified.
+          in: query
+          example: 3600
+          required: false
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+        - name: sensitivity_jy
+          in: query
+          required: false
+          description: >
+            The sensitivity of the observation in Jy. Should only be specified when calculating
+            integration time and integration_time_s parameter is not specified.
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+            example: 0.001
+        - $ref: '#/components/parameters/ReceiverBand'
+        - $ref: '#/components/parameters/MidSubarrayConfigurationForContinuum'
+        - $ref: '#/components/parameters/NumberOfSKAAntennas'
+        - $ref: '#/components/parameters/NumberOfMeerKATAntennas'
+        - $ref: '#/components/parameters/FreqCentreInHz'
+        - name: bandwidth_hz
+          in: query
+          description: Bandwidth for the continuum observation in Hz. Combined with the freq_centre_hz, it must define a
+            spectral window that is contained within the rx_band.
+          example: 400000000
+          required: true
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+        - $ref: '#/components/parameters/SpectralAveragingFactor'
+        - $ref: 'openapi-common.yaml#/components/parameters/RequiredPointingCentre'
+        - $ref: '#/components/parameters/PrecipitableWaterVapour'
+        - $ref: '#/components/parameters/Elevation'
+        - name: n_subbands
+          in: query
+          required: false
+          description: >
+            If this parameter is provided, the 'subbands' field in the response body will contain a sensitivity result 
+            for each sub-band, which is calculated by dividing the bandwidth in N sub-bands. If the value is given as 1 then 
+            this is equal to the main sensitivity calculation so no 'subbands' are returned in the response.
+            Note: if calculating integration time, subband_sensitivities_jy must also be set.
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+            maximum: 32
+        - name: subband_sensitivities_jy
+          in: query
+          required: false
+          description: >
+            Ordered array of the (thermal) sensitivity (Jy) for each sub-band, used when calculating integration time. 
+            (n_subbands must be set as well and have the same number of elements).
+          schema:
+            type: array
+            items:
+              type: number
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SystemEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/PointingEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/CoherenceEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/DigitisationEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/CorrelationEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/BandpassEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKASystemTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKAReceiverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKASpilloverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATSystemTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATReceiverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATSpilloverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKASkyTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKAGalacticTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATGalacticTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/GalacticEmissionSpectralIndex'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATDishEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKADishEfficiency'
+      responses:
+        '200':
+          $ref: '#/components/responses/ContinuumSuccess'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+        '5XX':
+          $ref: 'openapi-common.yaml#/components/responses/InternalServerError'
+  /continuum/weighting:
+    get:
+      description: >
+        Retrieve the parameters related to weighting (e.g. beam-size and relative sensitivity). The spectral_mode parameter determines whether
+        results are retrieved for a continuum or spectral (line) observation.
+      operationId: ska_ost_senscalc.mid.api.continuum_weighting
+      parameters:
+        - $ref: 'openapi-common.yaml#/components/parameters/SpectralMode'
+        - $ref: '#/components/parameters/FreqCentreInHz'
+        - $ref: 'openapi-common.yaml#/components/parameters/RequiredPointingCentre'
+        - $ref: 'openapi-common.yaml#/components/parameters/WeightingMode'
+        - $ref: 'openapi-common.yaml#/components/parameters/Robustness'
+        - $ref: '#/components/parameters/MidSubarrayConfigurationForContinuum'
+        - $ref: '#/components/parameters/Taper'
+        - name: subband_freq_centres_hz
+          in: query
+          required: false
+          description: Central frequency of each sub-band in Hz. Providing sub-band frequencies enables the provision of additional weighting outputs.
+          schema:
+            type: array
+            items:
+              type: number
+      responses:
+        '200':
+          description: Successful response with the correction factor.
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-common.yaml#/components/schemas/ContinuumWeightingResult'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+        '5XX':
+          $ref: 'openapi-common.yaml#/components/responses/InternalServerError'
+  /zoom/calculate:
+    get:
+      description: >
+        Calculates an integration time in seconds given a target sensitivity (or vice-versa) for the zoom mode. 
+        The result contains a spectral line calculation for the given zoom window. This should then each be combined 
+        with a response from the weighting endpoint.
+        Zoom modes are only available for the AA*, AA4 and custom subarrays (defined by n_ska and n_meer).
+      operationId: ska_ost_senscalc.mid.api.zoom_calculate
+      parameters:
+        - $ref: '#/components/parameters/ReceiverBand'
+        - $ref: '#/components/parameters/MidSubarrayConfigurationForZoom'
+        - $ref: '#/components/parameters/NumberOfSKAAntennas'
+        - $ref: '#/components/parameters/NumberOfMeerKATAntennas'
+        - $ref: '#/components/parameters/FreqCentresForZoom'
+        - $ref: 'openapi-common.yaml#/components/parameters/RequiredPointingCentre'
+        - $ref: '#/components/parameters/PrecipitableWaterVapour'
+        - $ref: '#/components/parameters/Elevation'
+        - $ref: '#/components/parameters/SpectralAveragingFactor'
+        - name: spectral_resolutions_hz
+          in: query
+          required: false
+          description: >
+            Array of zoom spectral resolutions. freq_centres_hz must be set as well and have the same number of elements.
+            Validation only checks that the entered spectral resolution lies within the range defined by the narrowest and
+            widest zoom windows, not that the entered spectral resolution corresponds to an actual zoom window.
+          schema:
+            type: array
+            items:
+              type: number
+              minimum: 210
+              maximum: 13440
+#              maxItems: 10 # consider something like this in the future
+        - name: total_bandwidths_hz
+          in: query
+          required: false
+          description: Array of zoom total bandwidths for each zoom window. Combined with the freq_centre_hz, each must define
+            a spectral window that is contained within the rx_band. Validation only checks that the entered bandwidth lies within
+            the range defined by the narrowest and widest zoom windows, not that the entered bandwidth corresponds to an actual zoom window.
+          schema:
+            type: array
+            items:
+              type: number
+              minimum: 3125000
+              maximum: 200000000
+#              maxItems: 10 # consider something like this in the future
+        - name: sensitivities_jy
+          in: query
+          required: false
+          description: >
+            Array of zoom sensitivities. This provides additional outputs for line observations
+            (spectral_resolutions_hz and freq_centres_hz must be set as well and have the same number of elements). 
+            Should only be specified when calculating integration time and integration_time_s parameter is not specified.
+          schema:
+            type: array
+            items:
+              type: number
+              minimum: 0
+              exclusiveMinimum: true
+              example: 0.001
+        - name: integration_time_s
+          description: >
+            The integration time of the observation in seconds. Should only be specified when calculating
+            sensitivity and sensitivities_jy parameter is not specified.
+          in: query
+          example: 3600
+          required: false
+          schema:
+            type: number
+            minimum: 0
+            exclusiveMinimum: true
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SystemEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/PointingEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/CoherenceEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/DigitisationEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/CorrelationEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/BandpassEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKASystemTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKAReceiverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKASpilloverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATSystemTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATReceiverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATSpilloverTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKASkyTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKAGalacticTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATGalacticTemperature'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/GalacticEmissionSpectralIndex'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/MeerKATDishEfficiency'
+        - $ref: 'openapi-mid-advanced.yaml#/components/parameters/SKADishEfficiency'
+      responses:
+        '200':
+          $ref: '#/components/responses/ZoomSuccess'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+        '5XX':
+          $ref: 'openapi-common.yaml#/components/responses/InternalServerError'
+  /zoom/weighting:
+    get:
+      description: >
+        Retrieve the parameters related to weighting (e.g. beam-size and relative sensitivity).
+        As zoom mode currently only displays the spectral sensitivity/integration time, only the spectral (line) parameters are retrieved.
+      operationId: ska_ost_senscalc.mid.api.zoom_weighting
+      parameters:
+        - $ref: '#/components/parameters/FreqCentresForZoom'
+        - $ref: 'openapi-common.yaml#/components/parameters/RequiredPointingCentre'
+        - $ref: 'openapi-common.yaml#/components/parameters/WeightingMode'
+        - $ref: 'openapi-common.yaml#/components/parameters/Robustness'
+        - $ref: '#/components/parameters/MidSubarrayConfigurationForZoom'
+        - $ref: '#/components/parameters/Taper'
+      responses:
+        '200':
+          description: Successful response with the correction factor.
+          content:
+            application/json:
+              schema:
+                $ref: 'openapi-common.yaml#/components/schemas/ZoomWeightingResult'
+        '400':
+          $ref: 'openapi-common.yaml#/components/responses/BadRequest'
+        '5XX':
+          $ref: 'openapi-common.yaml#/components/responses/InternalServerError'
+components:
+  schemas:
+    IntegrationTimeWithUnit:
+      type: object
+      properties:
+        value:
+          type: number
+          example: 55
+        unit:
+          type: string
+          example: "s"
+  parameters:
+    MidSubarrayConfigurationForContinuum:
+      name: subarray_configuration
+      description: The enumerated option for the array configuration to use to perform the calculation. 
+        To define a custom configuration, set n_ska and n_meer and do not set this parameter.
+      in: query
+      example: AA0.5
+      required: false
+      schema:
+        type: string
+        enum:
+          - "AA0.5"
+          - "AA1"
+          - "AA2"
+          - "AA*"
+          - "AA* (15-m antennas only)"
+          - "AA4"
+          - "AA*/AA4 (13.5-m antennas only)"
+          - "AA4 (15-m antennas only)"
+    MidSubarrayConfigurationForZoom:
+      name: subarray_configuration
+      description: The enumerated option for the array configuration to use to perform the calculation. 
+        To define a custom configuration, set n_ska and n_meer and do not set this parameter.
+      in: query
+      example: AA0.5
+      required: false
+      schema:
+        type: string
+        enum:
+          - "AA*"
+          - "AA* (15-m antennas only)"
+          - "AA4"
+          - "AA*/AA4 (13.5-m antennas only)"
+          - "AA4 (15-m antennas only)"
+    ReceiverBand:
+      name: rx_band
+      in: query
+      description: Enumeration of the receiver bands available for MID. Band 5a and 5b are not available for subarrays
+        that include 13.5-m antennas (n_meer > 0).
+      example: Band 5a
+      required: true
+      schema:
+        type: string
+        enum:
+          - "Band 1"
+          - "Band 2"
+          - "Band 3"
+          - "Band 4"
+          - "Band 5a"
+          - "Band 5b"
+    NumberOfSKAAntennas:
+      name: n_ska
+      in: query
+      description: Number of 15-m antennas in the custom subarray. If set, n_meer must also be set and subarray_configuration should not be set.
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 133
+    NumberOfMeerKATAntennas:
+      name: n_meer
+      in: query
+      description: Number of 13.5-m antennas in the custom subarray. If set, n_ska must also be set and subarray_configuration should not be set.
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 64
+    PrecipitableWaterVapour:
+      name: pwv
+      in: query
+      description: Precipitable water vapour in mm.
+      example: 10
+      required: false
+      schema:
+        type: number
+        minimum: 3
+        maximum: 25
+    SpectralAveragingFactor:
+      name: spectral_averaging_factor
+      description: Factor by which the spectral resolution should be averaged to calculate the effective resolution which is
+        used in the calculation. The allowed values correspond to those offered by the Mid correlator.
+      in: query
+      example: 1
+      required: false
+      schema:
+        type: number
+        enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          - 6
+          - 8
+          - 12
+          - 24
+    FreqCentreInHz:
+      name: freq_centre_hz
+      in: query
+      description: Central frequency in Hz. Combined with the bandwidth_mhz, it must define a spectral window that is contained 
+        within the rx_band.
+      example: 6500000000
+      required: true
+      schema:
+        type: number
+    FreqCentresForZoom:
+      name: freq_centres_hz
+      in: query
+      required: true
+      description: >
+        Array of central frequency of zoom windows in Hz. Combined with the total_bandwidths_hz, each must define a spectral window
+        that is contained within the rx_band.
+      schema:
+        type: array
+        items:
+          type: number
+      # maxItems: 10 # consider something like this in the future
+    Taper:
+      name: taper
+      in: query
+      required: false
+      description: Gaussian taper (specified as arcseconds in image plane). No taper applied if left empty.
+      schema:
+        type: number
+        enum:
+          - 0
+          - 0.25
+          - 1
+          - 4
+          - 16
+          - 64
+          - 256
+          - 1024
+    Elevation:
+      name: el
+      description: Elevation of the target that the observation will be performed at.
+      in: query
+      example: 45
+      required: false
+      schema:
+        type: number
+        minimum: 15
+        maximum: 90
+  responses:
+    ContinuumSuccess:
+      description: Successful response with the results of the integration time or sensitivity calculation for continuum mode.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              continuum_sensitivity:
+                $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+              continuum_integration_time:
+                $ref: '#/components/schemas/IntegrationTimeWithUnit'
+              spectral_sensitivity:
+                $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+              spectral_integration_time:
+                $ref: '#/components/schemas/IntegrationTimeWithUnit'
+              continuum_subband_sensitivities:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    subband_freq_centre:
+                      $ref: 'openapi-common.yaml#/components/schemas/FrequencyWithUnit'
+                    sensitivity:
+                      $ref: '#/components/schemas/IntegrationTimeWithUnit'
+              continuum_subband_integration_times:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    subband_freq_centre:
+                      $ref: 'openapi-common.yaml#/components/schemas/FrequencyWithUnit'
+                    integration_time:
+                      $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+              spectropolarimetry_results:
+                $ref: 'openapi-common.yaml#/components/schemas/SpectropolarimetryResults'
+    ZoomSuccess:
+      description: Successful response with the results of the integration time or sensitivity calculation for zoom mode.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                freq_centre:
+                  $ref: 'openapi-common.yaml#/components/schemas/FrequencyWithUnit'
+                spectral_sensitivity:
+                  $ref: 'openapi-common.yaml#/components/schemas/ImageSensitivity'
+                spectral_integration_time:
+                  $ref: '#/components/schemas/IntegrationTimeWithUnit'
+                spectropolarimetry_results:
+                  $ref: 'openapi-common.yaml#/components/schemas/SpectropolarimetryResults'

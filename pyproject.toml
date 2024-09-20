@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skasz"
+version = "2024.09.20"
+requires-python = ">= 3.10"
+authors = [{name = "Luca Di Mascolo", email = "lucadimascolo@gmail.com"}]
+description = "A minimal library for generating mock SKA observations of the SZ effect"
+readme = "README.md"
+license = {file = "LICENSE"}
+classifiers = ["License :: OSI Approved :: MIT License",
+               "Programming Language :: Python :: 3.10"]
+
+[project.urls]
+Repository = "https://github.com/lucadimascolo/skasz.git"
+Issues = "https://github.com/lucadimascolo/skasz/issues"
+Changelog = "https://github.com/lucadimascolo/skasz/blob/master/CHANGELOG.md"
