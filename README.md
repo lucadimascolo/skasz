@@ -6,7 +6,7 @@
 
 A minimal library for generating mock SKA observations of the SZ effect. 
 
-This package relies _heavily_ on RASCIL and the [SKA Science Data Processor](https://gitlab.com/ska-telescope/sdp) (SKA SDP) packages, and makes use of dedicated portings of parts of the [Karabo pipeline](https://github.com/i4Ds/Karabo-Pipeline) and of the python backed of the [SKA Sensitivity Calculator](https://gitlab.com/ska-telescope/ost/ska-ost-senscalc).
+This package relies _heavily_ on RASCIL and the [SKA Science Data Processor](https://gitlab.com/ska-telescope/sdp) (SKA SDP) packages, and makes use of dedicated portings of parts of the [Karabo pipeline](https://github.com/i4Ds/Karabo-Pipeline) and of the python backend of the [SKA Sensitivity Calculator](https://gitlab.com/ska-telescope/ost/ska-ost-senscalc).
 
 ## Installation
 
