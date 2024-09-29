@@ -20,17 +20,19 @@ from skasz.senscalc.mid.calculator import Calculator
 from skasz.senscalc.subarray import MIDArrayConfiguration
 from skasz.senscalc.mid.sefd import SEFD_array
 
+from skasz.senscalc.mid.validation import BAND_LIMITS
+
 from ska_ost_array_config.array_config import MidSubArray, SubArray
 
-midsub = {'AA*': {'config': MidSubArray(subarray_type='AA*').array_config, 'sub': MIDArrayConfiguration.MID_AASTAR_ALL},
-          'AA4': {'config': MidSubArray(subarray_type='AA4').array_config, 'sub': MIDArrayConfiguration.MID_AA4_ALL},
-      'AA4_15m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'sub': MIDArrayConfiguration.MID_AA4_SKA_ONLY},
-      'AA4_13m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'sub': MIDArrayConfiguration.MID_AA4_MEERKAT_ONLY},
-      'AA*_15m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'sub': MIDArrayConfiguration.MID_AASTAR_SKA_ONLY}}
+midsub = {'AA*': {'config': MidSubArray(subarray_type='AA*').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AASTAR_ALL},
+          'AA4': {'config': MidSubArray(subarray_type='AA4').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AA4_ALL},
+      'AA4_15m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'antlist': ['MID'], 'sub': MIDArrayConfiguration.MID_AA4_SKA_ONLY},
+      'AA4_13m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'antlist': ['MEERKAT'], 'sub': MIDArrayConfiguration.MID_AA4_MEERKAT_ONLY},
+      'AA*_15m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'antlist': ['MID'], 'sub': MIDArrayConfiguration.MID_AASTAR_SKA_ONLY}}
 
 from rascil.processing_components import plot_uvcoverage
 from rascil.processing_components.image.operations import polarisation_frame_from_wcs
-from rascil.processing_components.imaging.primary_beams import create_pb
+from rascil.processing_components.imaging.primary_beams import create_vp_generic, set_pb_header
 
 from skasz.senscalc.mid.calculator import Calculator
 
@@ -42,7 +44,7 @@ polarisation_frame = PolarisationFrame('stokesI')
 # Main visibility builder
 # ------------------------------------------------------------------------------
 class Visibility:
-    def __init__(self,config='AA4',rmax=None):
+    def __init__(self,config='AA4',rmax=None,context='2d'):
         self.config = midsub[config]
     
         self.obs = None
@@ -51,6 +53,8 @@ class Visibility:
         self.dirty = None
 
         self.pbeam = None
+
+        self.context = context
 
   # Simulate visibilities
   # ------------------------------------------------------------------------------  
@@ -95,8 +99,29 @@ class Visibility:
                   channel_bandwidth = self.obs.frequency_increment_hz,
                               nchan = self.obs.number_of_channels,
                  polarisation_frame = polarisation_frame)
+
+        self.pbeam = {'MID': self.create_pb(pbeam,    'MID',self.phasecentre,0.00,False),
+                  'MEERKAT': self.create_pb(pbeam,'MEERKAT',self.phasecentre,0.00,False),
+                   'HYBRID': self.create_pb(pbeam, 'HYBRID',self.phasecentre,0.00,False)}
         
-        self.pbeam = create_pb(pbeam,'MID',pointingcentre=self.phasecentre,use_local=False)
+        bllist = self.vis.baselines.data
+        vplist = {id: self.config['config'].vp_type.data[i] for i, id in enumerate(self.config['config'].id.data)}
+
+        self.vpmodel = {'nska': np.array([int(vplist[bl[0]]=='MID') + \
+                                          int(vplist[bl[1]]=='MID') for bl in bllist]),
+                       'nmeer': np.array([int(vplist[bl[0]]=='MEERKAT') + \
+                                          int(vplist[bl[1]]=='MEERKAT') for bl in bllist]),
+                          'id': np.empty(len(bllist),dtype=object)}
+        
+        for bi, bl in enumerate(bllist):
+            if vplist[bl[0]]=='MID' and vplist[bl[1]]=='MID':
+                self.vpmodel['id'][bi] = 'MID'
+            elif vplist[bl[0]]=='MEERKAT' and vplist[bl[1]]=='MEERKAT':
+                self.vpmodel['id'][bi] = 'MEERKAT'
+            else:
+                self.vpmodel['id'][bi] = 'MIXED'
+        
+        self.vis = self.vis.assign_coords(array=self.vpmodel['id'])
 
         if 'img' in kwargs:
             self.addimage(kwargs['img']['hdu'],**kwargs['img']['kwargs'])
@@ -108,21 +133,21 @@ class Visibility:
 
   # Add noise
   # ------------------------------------------------------------------------------
-    def addnoise(self,**kwargs):
-        
-        bllist = self.vis.baselines.data
-        vplist = {id: self.config['config'].vp_type.data[i] for i, id in enumerate(self.config['config'].id.data)}
+    def addnoise(self,**kwargs):    
+        rx_band = kwargs.get('rx_band',None)
 
-        vpmodel = {'nska': np.array([int(vplist[bl[0]]=='MID') + \
-                                     int(vplist[bl[1]]=='MID') for bl in bllist]),
-                  'nmeer': np.array([int(vplist[bl[0]]=='MEERKAT') + \
-                                     int(vplist[bl[1]]=='MEERKAT') for bl in bllist])}
-        
-        if self.frequency_channel_centers.min()-0.50*self.obs.frequency_increment_hz<=8.30E+09:
-              rx_band = 'Band 5a'
-        else: rx_band = 'Band 5b'
+        if rx_band is None:
+            for b, band in enumerate(BAND_LIMITS.keys()):
+                blims = BAND_LIMITS[band][-1]['limits']
 
-        #(10,19503,5,1)
+                olims = [self.frequency_channel_centers.min()-0.50*self.obs.frequency_increment_hz,
+                         self.frequency_channel_centers.max()+0.50*self.obs.frequency_increment_hz]
+
+                if np.logical_and(olims[0]>=blims[0],olims[1]<=blims[1]): rx_band = band
+        
+        if rx_band is None:
+            ValueError('No valid receiver band found. Please change the frequency range or specify a receiver band.')
+
         noise = np.empty_like(self.vis['vis'].data)
         for fi, freq in enumerate(self.frequency_channel_centers):  
             calc = Calculator(target = self.phasecentre,
@@ -131,7 +156,7 @@ class Visibility:
                         bandwidth_hz = self.obs.frequency_increment_hz*u.Hz,
               subarray_configuration = self.config['sub'])
 
-            sens = SEFD_array(vpmodel['nska'],vpmodel['nmeer'],calc.sefd_ska[0],calc.sefd_meer[0])
+            sens = SEFD_array(self.vpmodel['nska'],self.vpmodel['nmeer'],calc.sefd_ska[0],calc.sefd_meer[0])
             sens = sens*np.exp(calc.tau)/(calc.eta_system*np.sqrt(2.00*calc.bandwidth*self.integration_time_seconds*u.s))
             sens = sens.to(u.Jy).value
 
@@ -145,22 +170,23 @@ class Visibility:
   # ------------------------------------------------------------------------------  
     def addpoint(self,direction,flux,alpha=-0.70,reference_frequency=1.40E+10,**kwargs):
         flux = flux*(self.frequency_channel_centers/reference_frequency)**alpha
-        comp = SkyComponent(flux = flux[:,None],
-                       direction = direction,
-                       frequency = self.frequency_channel_centers,
-              polarisation_frame = polarisation_frame,
-                           shape = 'Point',  
-                          params = {})
-        
-        comp = apply_beam_to_skycomponent(comp,self.pbeam)
+        skycomp = SkyComponent(flux = flux[:,None],
+                          direction = direction,
+                          frequency = self.frequency_channel_centers,
+                 polarisation_frame = polarisation_frame,
+                              shape = 'Point',  
+                             params = {})
 
-        direction_cosines, vfluxes = extract_direction_and_flux(comp,self.vis)
+        for ai, ant in enumerate(self.config['antlist']):
+            comp = apply_beam_to_skycomponent(skycomp,self.pbeam[ant])
+            direction_cosines, vfluxes = extract_direction_and_flux(comp,self.vis)
 
-        self.vis['vis'].data += dft_kernel(vfluxes = vfluxes,
-                                 direction_cosines = direction_cosines,
-                                        uvw_lambda = self.vis.visibility_acc.uvw_lambda,
-                                dft_compute_kernel = kwargs.get('dft_compute_kernel',None))
+            comp = dft_kernel(vfluxes = vfluxes,
+                    direction_cosines = direction_cosines,
+                           uvw_lambda = self.vis.visibility_acc.uvw_lambda,
+                   dft_compute_kernel = kwargs.get('dft_compute_kernel',None))
 
+            self.vis['vis'].data[:,self.vpmodel['id']==ant] += comp[:,self.vpmodel['id']==ant]
 
   # Add extended source
   # Adapted from RASCIL: rascil.processing_components.image.operations.import_image_from_fits
@@ -186,7 +212,7 @@ class Visibility:
         except ValueError:
             pol_frame_wcs = polarisation_frame
 
-        pbeam = create_image(npixel = np.maximum(*data[0,0].shape),
+        model = create_image(npixel = np.maximum(*data[0,0].shape),
                            cellsize = np.deg2rad(wcs.wcs.cdelt[0]),
                         phasecentre = self.phasecentre,
                           frequency = self.obs.start_frequency_hz,
@@ -194,14 +220,16 @@ class Visibility:
                               nchan = self.obs.number_of_channels,
                  polarisation_frame = polarisation_frame)
         
-        pbeam = create_pb(pbeam,'MID',pointingcentre=self.phasecentre,use_local=False)
+        for ai, ant in enumerate(self.config['antlist']):
+            pb = self.create_pb(model,ant,self.phasecentre,0.00,False)
 
-        img = Image.constructor(data=data,polarisation_frame=pol_frame_wcs,wcs=wcs,clean_beam=None)
-        img.pixels.data *= pbeam.pixels.data
+            img = Image.constructor(data=data,polarisation_frame=pol_frame_wcs,wcs=wcs,clean_beam=None)
+            img.pixels.data *= pb.pixels.data
 
-        vis = predict_ng(self.vis,img,context='2d')
-        self.vis['vis'].data += vis['vis'].data; del vis
-    
+            vis = predict_ng(self.vis,img,context=self.context)
+            self.vis['vis'].data[:,self.vpmodel['id']==ant] += vis['vis'].data[:,self.vpmodel['id']==ant]
+            del pb, img, vis
+
 
   # Adapt the header for 2D images
   # ------------------------------------------------------------------------------
@@ -250,8 +278,8 @@ class Visibility:
         model = create_image_from_visibility(self.vis,cellsize=imcell,npixel=imsize,
                                              override_cellsize=kwargs.get('override_cellsize',False))
 
-        self.dirty, self.sumwt = invert_ng(self.vis,model,context='2d')
-        self.psf,            _ = invert_ng(self.vis,model,context='2d',dopsf=True)
+        self.dirty, self.sumwt = invert_ng(self.vis,model,context=self.context)
+        self.psf,            _ = invert_ng(self.vis,model,context=self.context,dopsf=True)
 
         return self.dirty.pixels.data, self.psf.pixels.data
 
@@ -261,9 +289,25 @@ class Visibility:
     def reset(self):
         self.vis['vis'].data = np.zeros(self.vis['vis'].data.shape,dtype=self.vis['vis'].data.dtype)
 
+    
+  # Create PB model
+  # ------------------------------------------------------------------------------
+    def create_pb(self,model,array='MID',pointingcentre=None,blockage=0.00,use_local=True):
+        if array=='MID':
+            beam = create_vp_generic(model,pointingcentre,use_local=False,diameter=15.00,blockage=0.0)
+            beam['pixels'].data = np.real(beam['pixels'].values*np.conjugate(beam['pixels'].values))
+        elif array=='MEERKAT':
+            beam = create_vp_generic(model,pointingcentre,use_local=False,diameter=13.50,blockage=0.0)
+            beam['pixels'].data = np.real(beam['pixels'].values*np.conjugate(beam['pixels'].values))
+        elif array=='HYBRID':
+            beam13   = create_vp_generic(model,pointingcentre,use_local=False,diameter=13.50,blockage=0.0)
+            beam15 = create_vp_generic(model,pointingcentre,use_local=False,diameter=15.00,blockage=0.0)
+            
+            beam15['pixels'].data = np.real(beam15['pixels'].values*np.conjugate(beam15['pixels'].values))
+            beam13['pixels'].data = np.real(beam13['pixels'].values*np.conjugate(beam13['pixels'].values))
+            beam13['pixels'].data = np.sqrt(beam13['pixels'].data*beam15['pixels'].data)
 
-  # Plot uv coverage
-  # ------------------------------------------------------------------------------  
-    def showuv(self):
-        plot_uvcoverage([self.vis])
-        plt.show(); plt.close()
+            beam = beam13
+
+        set_pb_header(beam, use_local=use_local)
+        return beam
