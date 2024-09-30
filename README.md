@@ -68,3 +68,5 @@ noisy, psf = vis.getimage(imsize=hdu.header['NAXIS2'],imcell=hdu.header['CDELT2'
 
 ```
 
+## Future developments
+- [ ] Efficient generation of simulated visibilities in the case heterogeneous arrays.
