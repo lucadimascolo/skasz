@@ -55,8 +55,8 @@ obs = Observation(start_frequency_hz = 1.20E+10,
                               length = timedelta(hours=10),
                   number_of_channels = 1,
               frequency_increment_hz = 2.00E+09,
-                 phase_centre_ra_deg = hdu.header['CRVAL1']*u.deg,
-                phase_centre_dec_deg = hdu.header['CRVAL2']*u.deg,
+                 phase_centre_ra_deg = hdu[0].header['CRVAL1']*u.deg,
+                phase_centre_dec_deg = hdu[0].header['CRVAL2']*u.deg,
                 number_of_time_steps = 20)
 
 # generate (noise-free) mock observations
