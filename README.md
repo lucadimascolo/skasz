@@ -38,6 +38,8 @@ For information on the RASCIL data package, you can take a look at the official 
 This is a basic example of how to use `skasz` for generating mock SZ observations from an input FITS file, and to obtain noise-free and noisy dirty images.
 
 ```python
+from skasz.observations import Observation
+from skasz import sz
 from datetime import datetime, timedelta
 
 from astropy import units as u
