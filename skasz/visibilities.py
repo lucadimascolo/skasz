@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import AltAz, SkyCoord
+from astropy.time import Time
 from astropy import constants as const
 from astropy import units as u
 from astropy.io import fits
@@ -17,6 +18,7 @@ from ska_sdp_func_python.imaging.dft import dft_kernel, extract_direction_and_fl
 from ska_sdp_func_python.imaging import invert_ng, predict_ng, create_image_from_visibility, advise_wide_field 
 
 from skasz.senscalc.mid.calculator import Calculator
+from skasz.senscalc.utilities import TelParams
 from skasz.senscalc.subarray import MIDArrayConfiguration
 from skasz.senscalc.mid.sefd import SEFD_array
 
@@ -44,7 +46,7 @@ polarisation_frame = PolarisationFrame('stokesI')
 # Main visibility builder
 # ------------------------------------------------------------------------------
 class Visibility:
-    def __init__(self,config='AA4',rmax=None,context='2d'):
+    def __init__(self,config='AA4',rmax=None,context='2d',obs=None,**kwargs):
         self.config = midsub[config]
     
         self.obs = None
@@ -55,6 +57,8 @@ class Visibility:
         self.pbeam = None
 
         self.context = context
+
+        if obs is not None: self.simulate(obs,**kwargs)
 
   # Simulate visibilities
   # ------------------------------------------------------------------------------  
@@ -119,9 +123,9 @@ class Visibility:
             elif vplist[bl[0]]=='MEERKAT' and vplist[bl[1]]=='MEERKAT':
                 self.vpmodel['id'][bi] = 'MEERKAT'
             else:
-                self.vpmodel['id'][bi] = 'MIXED'
+                self.vpmodel['id'][bi] = 'HYBRID'
         
-        self.vis = self.vis.assign_coords(array=self.vpmodel['id'])
+        self.vis = self.vis.assign_coords(array=self.vpmodel['id']); self.vpmodel.pop('id')
 
         if 'img' in kwargs:
             self.addimage(kwargs['img']['hdu'],**kwargs['img']['kwargs'])
@@ -133,7 +137,9 @@ class Visibility:
 
   # Add noise
   # ------------------------------------------------------------------------------
-    def addnoise(self,**kwargs):    
+    def addnoise(self,eltype='default',**kwargs):    
+        midloc = TelParams.mid_core_location()
+
         rx_band = kwargs.get('rx_band',None)
 
         if rx_band is None:
@@ -148,22 +154,47 @@ class Visibility:
         if rx_band is None:
             ValueError('No valid receiver band found. Please change the frequency range or specify a receiver band.')
 
+        #obstime = Time()
+        #el = self.phasecentre.transform_to(AltAz(obstime=obstime,location=midloc))
+
         noise = np.empty_like(self.vis['vis'].data)
-        for fi, freq in enumerate(self.frequency_channel_centers):  
-            calc = Calculator(target = self.phasecentre,
-                             rx_band = rx_band,
-                      freq_centre_hz = freq*u.Hz,
-                        bandwidth_hz = self.obs.frequency_increment_hz*u.Hz,
-              subarray_configuration = self.config['sub'])
 
-            sens = SEFD_array(self.vpmodel['nska'],self.vpmodel['nmeer'],calc.sefd_ska[0],calc.sefd_meer[0])
-            sens = sens*np.exp(calc.tau)/(calc.eta_system*np.sqrt(2.00*calc.bandwidth*self.integration_time_seconds*u.s))
-            sens = sens.to(u.Jy).value
+        if eltype=='transit':
+            dt = np.linspace(0.00,24.00,1000)*u.h
+            obstime = Time(self.obs.start_date_and_time.isoformat())+dt
+            altaz = self.phasecentre.transform_to(AltAz(obstime=obstime,location=midloc))
 
-            sens = np.broadcast_to(sens[None,...],(noise.shape[0],noise.shape[1]))
+            obstime = obstime[np.nanargmax(altaz.alt)]
+            obstime = obstime-np.linspace(-0.50,0.50,self.obs.number_of_time_steps)*self.obs.length.total_seconds()*u.s
+            altaz = self.phasecentre.transform_to(AltAz(obstime=obstime,location=midloc))
 
-            noise[:,:,fi,0] = scipy.stats.norm.rvs(loc=0.00,scale=sens) + \
-                           1j*scipy.stats.norm.rvs(loc=0.00,scale=sens)
+            ellist = altaz.alt
+
+        for ti in range(self.vis['vis'].data.shape[0]):
+            
+            if eltype=='default':
+                el = 45.00*u.deg
+            elif eltype=='tune':
+                obstime = Time(self.obs.start_date_and_time.isoformat())+(ti+0.50)*self.integration_time_seconds*u.s
+                altaz = self.phasecentre.transform_to(AltAz(obstime=obstime,location=midloc))
+                el = altaz.alt
+            elif eltype=='transit':
+                el = ellist[ti]
+
+            for fi, freq in enumerate(self.frequency_channel_centers):  
+                calc = Calculator(target = self.phasecentre,
+                                      el = el,
+                                 rx_band = rx_band,
+                          freq_centre_hz = freq*u.Hz,
+                            bandwidth_hz = self.obs.frequency_increment_hz*u.Hz,
+                  subarray_configuration = self.config['sub'])
+
+                sens = SEFD_array(self.vpmodel['nska'],self.vpmodel['nmeer'],calc.sefd_ska[0],calc.sefd_meer[0])
+                sens = sens*np.exp(calc.tau)/(calc.eta_system*np.sqrt(2.00*calc.bandwidth*self.integration_time_seconds*u.s))
+                sens = sens.to(u.Jy).value
+
+                noise[ti,:,fi,0] = scipy.stats.norm.rvs(loc=0.00,scale=sens) + \
+                                1j*scipy.stats.norm.rvs(loc=0.00,scale=sens)
         self.vis['vis'].data += noise
 
   # Add point source component
@@ -179,14 +210,16 @@ class Visibility:
 
         for ai, ant in enumerate(self.config['antlist']):
             comp = apply_beam_to_skycomponent(skycomp,self.pbeam[ant])
-            direction_cosines, vfluxes = extract_direction_and_flux(comp,self.vis)
+
+            subvis = self.vis.sel(array=ant)
+            direction_cosines, vfluxes = extract_direction_and_flux(comp,subvis)
 
             comp = dft_kernel(vfluxes = vfluxes,
                     direction_cosines = direction_cosines,
-                           uvw_lambda = self.vis.visibility_acc.uvw_lambda,
+                           uvw_lambda = subvis.visibility_acc.uvw_lambda,
                    dft_compute_kernel = kwargs.get('dft_compute_kernel',None))
 
-            self.vis['vis'].data[:,self.vpmodel['id']==ant] += comp[:,self.vpmodel['id']==ant]
+            self.vis['vis'].data[:,self.vis['array'].data==ant] += comp[:,self.vis['array'].data==ant]
 
   # Add extended source
   # Adapted from RASCIL: rascil.processing_components.image.operations.import_image_from_fits
@@ -226,9 +259,10 @@ class Visibility:
             img = Image.constructor(data=data,polarisation_frame=pol_frame_wcs,wcs=wcs,clean_beam=None)
             img.pixels.data *= pb.pixels.data
 
-            vis = predict_ng(self.vis,img,context=self.context)
-            self.vis['vis'].data[:,self.vpmodel['id']==ant] += vis['vis'].data[:,self.vpmodel['id']==ant]
-            del pb, img, vis
+            subvis = self.vis.sel(array=ant)
+            subvis = predict_ng(subvis,img,context=self.context)
+            self.vis['vis'].data[:,self.vis['array'].data==ant] += subvis['vis'].data[:,self.vis['array'].data==ant]
+            del pb, img, subvis
 
 
   # Adapt the header for 2D images
