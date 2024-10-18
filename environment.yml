@@ -15,5 +15,6 @@ dependencies:
     - ska-ost-array-config
     - typing-extensions
     - marshmallow
+    - reproject
     - numba
     - -e .
