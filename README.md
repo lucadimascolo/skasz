@@ -60,7 +60,7 @@ obs = Observation(start_frequency_hz = 1.20E+10,
                 number_of_time_steps = 20)
 
 # generate (noise-free) mock observations
-vis = sz.comptontovis(hdu=hdu,obs=obs,config='AA4_15m')
+vis = sz.comptontovis(hdu=hdu[0],obs=obs,config='AA4_15m')
 
 # produce dirty image and psf for the simulated visibilities
 dirty, psf = vis.getimage(imsize=hdu.header['NAXIS2'],imcell=hdu.header['CDELT2']*u.deg)
