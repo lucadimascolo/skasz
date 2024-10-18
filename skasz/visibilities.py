@@ -104,9 +104,9 @@ class Visibility:
                               nchan = self.obs.number_of_channels,
                  polarisation_frame = polarisation_frame)
 
-        self.pbeam = {'MID': self.create_pb(pbeam,    'MID',self.phasecentre,0.00,False),
-                  'MEERKAT': self.create_pb(pbeam,'MEERKAT',self.phasecentre,0.00,False),
-                   'HYBRID': self.create_pb(pbeam, 'HYBRID',self.phasecentre,0.00,False)}
+        self.pbeam = {'MID': self.createpb(pbeam,    'MID',self.phasecentre,0.00,False),
+                  'MEERKAT': self.createpb(pbeam,'MEERKAT',self.phasecentre,0.00,False),
+                   'HYBRID': self.createpb(pbeam, 'HYBRID',self.phasecentre,0.00,False)}
         
         bllist = self.vis.baselines.data
         vplist = {id: self.config['config'].vp_type.data[i] for i, id in enumerate(self.config['config'].id.data)}
@@ -254,7 +254,7 @@ class Visibility:
                  polarisation_frame = polarisation_frame)
         
         for ai, ant in enumerate(self.config['antlist']):
-            pb = self.create_pb(model,ant,self.phasecentre,0.00,False)
+            pb = self.createpb(model,ant,self.phasecentre,0.00,False)
 
             img = Image.constructor(data=data,polarisation_frame=pol_frame_wcs,wcs=wcs,clean_beam=None)
             img.pixels.data *= pb.pixels.data
@@ -326,7 +326,7 @@ class Visibility:
     
   # Create PB model
   # ------------------------------------------------------------------------------
-    def create_pb(self,model,array='MID',pointingcentre=None,blockage=0.00,use_local=True):
+    def createpb(self,model,array='MID',pointingcentre=None,blockage=0.00,use_local=True):
         if array=='MID':
             beam = create_vp_generic(model,pointingcentre,use_local=False,diameter=15.00,blockage=0.0)
             beam['pixels'].data = np.real(beam['pixels'].values*np.conjugate(beam['pixels'].values))

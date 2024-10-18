@@ -2,6 +2,8 @@ from skasz.visibilities import Visibility
 from astropy.coordinates import SkyCoord
 from astropy import constants as const
 from astropy import units as u
+from astropy.io import fits
+from astropy.wcs import WCS
 
 from astropy.cosmology import Planck18
 
@@ -9,6 +11,8 @@ import numpy as np
 import scipy.integrate
 
 from numba import jit, vectorize, float32, float64
+
+from skasz import utils
 
 # Unit conversions
 # ==============================================================================
@@ -44,7 +48,7 @@ def ytszToJyPix(freq,ipix,jpix):
 # ==============================================================================
 # Generate visibilities starting from a Compton y map
 # ------------------------------------------------------------------------------
-def comptontovis(hdu,obs,config='AA4',addnoise=False,**kwargs):
+def comptontovis(obs,hdu=None,imsize=None,imcell=None,config='AA4',addnoise=False,**kwargs):
     vis = Visibility(config=config)
     vis.simulate(obs,**kwargs)
 
@@ -68,8 +72,10 @@ def comptontovis(hdu,obs,config='AA4',addnoise=False,**kwargs):
     return vis
 
 # Pressure profiles
-# ------------------------------------------------------------------------------
+# ==============================================================================
 
+# General radius class
+# ------------------------------------------------------------------------------
 class Radius:
     def __init__(self,r):
         self.r500 = r
@@ -89,6 +95,8 @@ class Radius:
         self.deg = self.deg.to(u.dimensionless_unscaled)*u.rad
         self.deg = self.deg.to(u.deg)
 
+# General self-similar pressure model
+# ------------------------------------------------------------------------------
 class Pressure:
     def __init__(self,**kwargs):
         self.cosmo = kwargs.get('cosmo',Planck18)
@@ -119,18 +127,53 @@ class Pressure:
         result = result*(u.keV/u.cm**3)*self.r500.kpc*ynorm
         return result.to(u.dimensionless_unscaled).value
     
-    def __call__(self,m500,z):
-        self.z    = z
-        self.m500 = m500.to(u.M_sun)
+    def __call__(self,**kwargs):
+        if (self.z is None) and ('z' not in kwargs):
+            ValueError('You should provide a valid redshift value')
+        else: self.z = kwargs.get('z',self.z)
+        
+        if (self.m500 is None) and ('m500' not in kwargs):
+            ValueError('You should provide a valid m500 value')
+        else: self.m500 = kwargs.get('m500',self.m500).to(u.M_sun)
 
         self.r500.update(cosmo=self.cosmo,z=self.z,m500=self.m500)
 
         self.rmax.update(cosmo=self.cosmo,z=self.z,r500=self.r500)
         self.rval.update(cosmo=self.cosmo,z=self.z,r500=self.r500)
 
-        return self.integrate()
-    
+        self.yprof = self.integrate()
 
+        mode = kwargs.get('mode','1D')
+        if   mode=='1D': return self.yprof
+        elif mode=='2D':            
+            hdu = kwargs.get('hdu',None)
+            if hdu is None:
+                obs = kwargs.get('obs',None)
+                imsize = kwargs.get('imsize',None)
+                imcell = kwargs.get('imcell',None)
+                if (obs    is not None) and \
+                   (imsize is not None) and \
+                   (imcell is not None):
+                    hdu = utils.hdu_from_obs(obs,imsize,imcell)
+                else:
+                    ValueError('2D mode - you should provide a valid reference hdu or an (obs,imsize,imcell) set')
+            
+            xgrid, ygrid = utils.generateWCSMesh(hdu.header)
+
+            xcval = kwargs.get('xc',hdu.header['CRVAL1']*u.deg)
+            ycval = kwargs.get('yc',hdu.header['CRVAL2']*u.deg)
+
+            rgrid = np.hypot((xgrid-xcval.to(u.deg).value)*np.cos(ycval.to(u.rad).value),
+                              ygrid-ycval.to(u.deg).value)
+            
+            self.ygrid = np.interp(rgrid,self.rval.deg.value,self.yprof)
+        
+            hdu.data = self.ygrid.copy()
+            hdu.header['UNITS'] = 'COMPTON Y'
+            return hdu
+
+# Arnaud+2010 models
+# ------------------------------------------------------------------------------
 class A10(Pressure):
     def __init__(self,model='up',**kwargs):
         super().__init__(**kwargs)
@@ -150,6 +193,12 @@ class A10(Pressure):
         self.pars['fb']  = kwargs.get('fb', 0.175)
         self.pars['mu']  = kwargs.get('mu', 0.590)
         self.pars['mue'] = kwargs.get('mue',1.140)
+
+        self.m500 = kwargs.get('m500',None)
+        self.z    = kwargs.get('z',None)
+
+        if self.m500 is not None and self.z is not None:
+            super().__call__(**kwargs)
 
     def profile(self,x):
         alpha = self.pars['alpha']
