@@ -48,7 +48,7 @@ def ytszToJyPix(freq,ipix,jpix):
 # ==============================================================================
 # Generate visibilities starting from a Compton y map
 # ------------------------------------------------------------------------------
-def comptontovis(obs,hdu=None,imsize=None,imcell=None,config='AA4',addnoise=False,**kwargs):
+def comptontovis(obs,hdu=None,config='AA4',addnoise=False,**kwargs):
     vis = Visibility(config=config)
     vis.simulate(obs,**kwargs)
 

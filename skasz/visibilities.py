@@ -38,8 +38,12 @@ from rascil.processing_components.imaging.primary_beams import create_vp_generic
 
 from skasz.senscalc.mid.calculator import Calculator
 
+from reproject import reproject_interp
+
 import numpy as np
 import scipy.stats
+
+import warnings
 
 polarisation_frame = PolarisationFrame('stokesI')
 
@@ -90,9 +94,11 @@ class Visibility:
                   polarisation_frame = polarisation_frame,
                     integration_time = self.integration_time_seconds)
 
+        self.vis = self.vis.assign(_imaging_weight=self.vis.weight)
+
         advise = advise_wide_field(self.vis,guard_band_image=3.00,delA=0.1,facets=1, 
                                     oversampling_synthesised_beam=4.0)
-
+        
         pbsize = kwargs.get('pbsize',1000)
         pbcell = kwargs.get('pbcell',advise['npixels']*advise['cellsize']/pbsize)
 
@@ -196,7 +202,7 @@ class Visibility:
                 noise[ti,:,fi,0] = scipy.stats.norm.rvs(loc=0.00,scale=sens) + \
                                 1j*scipy.stats.norm.rvs(loc=0.00,scale=sens)
         self.vis['vis'].data += noise
-
+        
   # Add point source component
   # ------------------------------------------------------------------------------  
     def addpoint(self,direction,flux,alpha=-0.70,reference_frequency=1.40E+10,**kwargs):
@@ -225,10 +231,10 @@ class Visibility:
   # Adapted from RASCIL: rascil.processing_components.image.operations.import_image_from_fits
   # ------------------------------------------------------------------------------
     def addimage(self,hdu,**kwargs):
-        hdu = self.rascilhdu(hdu,**kwargs)
-        wcs = WCS(hdu)
+        hdu_ = self.rascilhdu(hdu,**kwargs)
+        wcs  = WCS(hdu_)
         
-        data = hdu.data.copy()
+        data = hdu_.data.copy()
 
         if wcs.axis_type_names[3]=='STOKES' or wcs.axis_type_names[2] == 'FREQ':
             wcs = wcs.swapaxes(2,3)
@@ -295,6 +301,19 @@ class Visibility:
                 header['NAXIS4'] =     nc; header['CDELT4'] = self.obs.frequency_increment_hz
                 header['CRPIX4'] =   1.00; header['CRVAL4'] = self.frequency_channel_centers[0]
                 header['CTYPE4'] = 'FREQ'; header['CUNIT4'] = 'Hz'
+            
+            if header['CTYPE1']!='RA---SIN' or header['CTYPE2']!='DEC--SIN':
+                warnings.warn('Reprojecting image to [RA---SIN,DEC--SIN]')
+                header_ = header.copy()
+                header_['CTYPE1'] = 'RA---SIN'
+                header_['CTYPE2'] = 'DEC--SIN'
+
+                reproject = kwargs.get('reproject',reproject_interp)
+                data, _ = reproject((data,header),header_)
+                data[np.isnan(data)] = 0.00
+
+                header = header_.copy()
+
             return fits.PrimaryHDU(data,header)
 
 
