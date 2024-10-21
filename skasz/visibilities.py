@@ -38,7 +38,9 @@ from rascil.processing_components.imaging.primary_beams import create_vp_generic
 
 from skasz.senscalc.mid.calculator import Calculator
 
+from astropy.coordinates import ICRS
 from reproject import reproject_interp
+from reproject.mosaicking import find_optimal_celestial_wcs
 
 import numpy as np
 import scipy.stats
@@ -134,11 +136,11 @@ class Visibility:
         self.vis = self.vis.assign_coords(array=self.vpmodel['id']); self.vpmodel.pop('id')
 
         if 'img' in kwargs:
-            self.addimage(kwargs['img']['hdu'],**kwargs['img']['kwargs'])
+            self.addimage(kwargs['img']['hdu'],**kwargs['img'].get('kwargs',{}))
         
         if 'pts' in kwargs:
             for pt in kwargs['pts']:
-                self.addpoint(pt['direction'],pt['flux'],**pt['kwargs'])
+                self.addpoint(pt['direction'],pt['flux'],**pt.get('kwargs',{}))
 
 
   # Add noise
@@ -274,6 +276,14 @@ class Visibility:
   # Adapt the header for 2D images
   # ------------------------------------------------------------------------------
     def rascilhdu(self,hdu,**kwargs):
+        
+        if hdu.header['CTYPE1'] in ['RA---GLS','RA---NCP'] or \
+           hdu.header['CTYPE2'] in ['DEC--GLS','DEC--NCP']:
+            frame = ICRS()
+            wcs, _ = find_optimal_celestial_wcs([hdu], frame=frame)
+
+            hdu = fits.PrimaryHDU(data=hdu.data,header=wcs.to_header())
+
         header = hdu.header
         data   = hdu.data
         
@@ -302,7 +312,7 @@ class Visibility:
                 header['CRPIX4'] =   1.00; header['CRVAL4'] = self.frequency_channel_centers[0]
                 header['CTYPE4'] = 'FREQ'; header['CUNIT4'] = 'Hz'
             
-            if header['CTYPE1']!='RA---SIN' or header['CTYPE2']!='DEC--SIN':
+            if header['CTYPE1']!='RA---SIN' or header['CTYPE2']!='DEC--SIN':                
                 warnings.warn('Reprojecting image to [RA---SIN,DEC--SIN]')
                 header_ = header.copy()
                 header_['CTYPE1'] = 'RA---SIN'
