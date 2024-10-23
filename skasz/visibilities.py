@@ -15,7 +15,7 @@ from ska_sdp_datamodels.image.image_create import create_image
 
 from ska_sdp_func_python.sky_component import apply_beam_to_skycomponent
 from ska_sdp_func_python.imaging.dft import dft_kernel, extract_direction_and_flux
-from ska_sdp_func_python.imaging import invert_ng, predict_ng, create_image_from_visibility, advise_wide_field 
+from ska_sdp_func_python.imaging import invert_ng, predict_ng, create_image_from_visibility, advise_wide_field, taper_visibility_gaussian
 
 from skasz.senscalc.mid.calculator import Calculator
 from skasz.senscalc.utilities import TelParams
@@ -340,6 +340,12 @@ class Visibility:
 
         model = create_image_from_visibility(self.vis,cellsize=imcell,npixel=imsize,
                                              override_cellsize=kwargs.get('override_cellsize',False))
+
+        inpvis = self.vis
+        
+        taper = kwargs.get('taper',None)
+        if taper is not None:
+            inpvis = taper_visibility_gaussian(inpvis,taper.to(u.rad).value)
 
         self.dirty, self.sumwt = invert_ng(self.vis,model,context=self.context)
         self.psf,            _ = invert_ng(self.vis,model,context=self.context,dopsf=True)
