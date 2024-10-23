@@ -98,7 +98,12 @@ class Radius:
 # General self-similar pressure model
 # ------------------------------------------------------------------------------
 class Pressure:
-    def __init__(self,**kwargs):
+    allowed_models = [{'A10': ['up','cc','md']},
+                      {'M14': ['up','cc','nc']},
+                      {'L15': ['ref','8.0','8.5']},
+                      {'G17': ['ex','st']}]
+
+    def __init__(self,model,**kwargs):
         self.cosmo = kwargs.get('cosmo',Planck18)
 
         rmin = kwargs.get('rmin',1.00E-07)
@@ -110,6 +115,18 @@ class Pressure:
 
         self.r500 = Radius(1.00)
         
+        self.model = model
+        
+        self.pars = dict(fb  = kwargs.get('fb', 0.175),
+                         mu  = kwargs.get('mu', 0.590),
+                         mue = kwargs.get('mue',1.140))
+
+        self.m500 = kwargs.get('m500',None)
+        self.z    = kwargs.get('z',None)
+
+        if self.m500 is not None and self.z is not None:
+            super().__call__(**kwargs)
+            
     def integrate(self):
         @jit(forceobj=True, cache=True)
         def _intarg(r,r0):
@@ -172,30 +189,27 @@ class Pressure:
             hdu.header['UNITS'] = 'COMPTON Y'
             return hdu
 
+    def print_allowed_models(cls):
+        for model in cls.allowed_models:
+            for key in model:
+                print(f'{key}: {model[key]}')
+
 # Arnaud+2010 models
 # ------------------------------------------------------------------------------
 class A10(Pressure):
     def __init__(self,model='up',**kwargs):
-        super().__init__(**kwargs)
-        self.model = f'A10_{model}'
+        super().__init__(f'A10_{model}',**kwargs)
 
         if   model=='up': 
-            self.pars = dict(alpha = 1.0510E+00, beta = 5.4905E+00, gamma =  3.0810E-01, 
-                             pnorm = 8.4030E+00, c500 = 1.1770E+00, ap    =  1.2000E-01)
-            self.pars['pnorm'] = self.pars['pnorm']*((self.cosmo.H0.value/70.00)**(-3.00/2.00))
+            self.pars.update(dict(alpha = 1.0510E+00, beta = 5.4905E+00, gamma =  3.0810E-01, 
+                                  pnorm = 8.4030E+00, c500 = 1.1770E+00, ap    =  1.2000E-01))
+            self.pars['pnorm'] = self.pars['pnorm']/np.power(self.cosmo.H0.value/70.00,3.00/2.00)
         elif model=='cc': 
-            self.pars = dict(alpha = 1.2223E+00, beta = 5.4905E+00, gamma =  7.7360E-01,
-                             pnorm = 3.2490E+00, c500 = 1.1280E+00, ap    = -1.0000E-01)
+            self.pars.update(dict(alpha = 1.2223E+00, beta = 5.4905E+00, gamma =  7.7360E-01,
+                                  pnorm = 3.2490E+00, c500 = 1.1280E+00, ap    = -1.0000E-01))
         elif model=='md':
-            self.pars = dict(alpha = 1.4063E+00, beta = 5.4905E+00, gamma =  3.7980E-01,
-                             pnorm = 3.2020E+00, c500 = 1.0830E+00, ap    = -1.0000E-01)
-
-        self.pars['fb']  = kwargs.get('fb', 0.175)
-        self.pars['mu']  = kwargs.get('mu', 0.590)
-        self.pars['mue'] = kwargs.get('mue',1.140)
-
-        self.m500 = kwargs.get('m500',None)
-        self.z    = kwargs.get('z',None)
+            self.pars.update(dict(alpha = 1.4063E+00, beta = 5.4905E+00, gamma =  3.7980E-01,
+                                  pnorm = 3.2020E+00, c500 = 1.0830E+00, ap    = -1.0000E-01))
 
         if self.m500 is not None and self.z is not None:
             super().__call__(**kwargs)
@@ -206,20 +220,160 @@ class A10(Pressure):
         gamma = self.pars['gamma']
         c500  = self.pars['c500']
 
-        logm  = np.log10(self.m500.to(u.M_sun).value)
         Hz    = self.cosmo.H(self.z)
 
-        p500  = (10**(self.pars['ap']*(logm-14.00)))
-        p500 *= (3.00/8.00/np.pi)*(self.pars['fb']*self.pars['mu']/self.pars['mue'])
-        p500 *= (((((2.5e2*Hz*Hz)**2.00)*((10**(logm-15.00))*u.solMass)/(const.G**(0.50)))**(2.00/3.00)).to(u.keV/u.cm**3)).value
-        p500 *= 1e10
+        p500  = (3.00/8.00/np.pi)*self.pars['fb']*self.pars['mu']/self.pars['mue']
+        p500 *= (2.50E+02*(Hz**2)/const.G**0.25)**(4.00/3.00)
+        p500 *= (self.m500.to(u.M_sun).value/1.00E+15)**(2.00/3.00)
+        p500  = p500.to(u.keV/u.cm**3).value*1.00E+10
 
         factor1 = 1.00/(c500*x)**gamma
-
         factor2 = (1.00+((c500*x)**alpha))**((gamma-beta)/alpha)
 
-        if self.pars['ap']!=-0.10: 
+        if self.pars['ap']!=-0.10:
             factor3 = (self.m500.to(u.M_sun).value/3.00E+14)*(self.cosmo.H0.value/70.00)
-            factor3 = factor3**((self.pars['ap']+0.10)/(1.00+(2.00*x)**3.00))
-        else: factor3 = 1.00
+            factor3 = np.power(factor3,(self.pars['ap']+0.10)/(1.00+(2.00*x)**3.00))
+        else:
+            factor3 = 1.00
         return self.pars['pnorm']*p500*factor1*factor2*factor3
+
+# Le Brun+2015
+# ------------------------------------------------------------------------------
+class L15(Pressure):
+    def __init__(self,model='ref',**kwargs):
+        super().__init__(f'L15_{model}',**kwargs)
+
+        if   model=='ref':
+            self.pars.update(dict(alpha = 1.489, beta = 4.512, gamma = 1.174, delta = 0.072, epsilon = 0.245,
+                                  pnorm = 0.694, c500 = 0.986))
+        elif model=='8.0':
+            self.pars.update(dict(alpha = 1.517, beta = 4.625, gamma = 0.814, delta = 0.263, epsilon = 0.805,
+                                  pnorm = 0.791, c500 = 0.892))
+        elif model=='8.5':
+            self.pars.update(dict(alpha = 1.572, beta = 4.850, gamma = 0.920, delta = 0.246, epsilon = 0.864,
+                                  pnorm = 0.235, c500 = 0.597))
+
+    def profile(self,x):
+        alpha   = self.pars['alpha']
+        beta    = self.pars['beta']
+        gamma   = self.pars['gamma']
+        delta   = self.pars['delta']
+        epsilon = self.pars['epsilon']
+
+        c500  = self.pars['c500']*(self.m500.to(u.M_sun).value/1.00E+14)**delta
+        pnorm = self.pars['pnorm']*(self.m500.to(u.M_sun).value/1.00E+14)**delta
+
+        Hz    = self.cosmo.H(self.z)
+
+        p500  = (3.00/8.00/np.pi)*self.pars['fb']*self.pars['mu']/self.pars['mue']
+        p500 *= (2.50E+02*(Hz**2)/const.G**0.25)**(4.00/3.00)
+        p500 *= (self.m500.to(u.M_sun).value/1.00E+15)**(2.00/3.00)
+        p500  = p500.to(u.keV/u.cm**3).value*1.00E+10
+
+        factor1 = 1.00/(c500*x)**gamma
+        factor2 = (1.00+((c500*x)**alpha))**((gamma-beta)/alpha)
+
+        return pnorm*p500*factor1*factor2
+
+# Gupta+2017
+# ------------------------------------------------------------------------------
+class G17(Pressure):
+    def __init__(self,model='ex',**kwargs):
+        super().__init__(f'G17_{model}',**kwargs)
+
+        if model=='ex':
+            self.pars.update(dict(beta0 = 4.770, gamma0 =  0.502, alpha = 1.3300, ap = -0.0510,
+                                  beta1 = 0.056, gamma1 = -0.050, pnorm = 0.1716, cp = -0.3210,
+                                  beta2 = 0.254, gamma2 = -0.710, c500  = 1.2700))
+        elif model=='st':
+            self.pars.update(dict(beta0 = 5.060, gamma0 =  0.370, alpha = 1.2300, ap =  0.0105,
+                                  beta1 = 0.000, gamma1 =  0.000, pnorm = 0.1701, cp = -0.1210,
+                                  beta2 = 0.000, gamma2 =  0.000, c500  = 1.2100))
+    
+    def profile(self,x):
+        alpha   = self.pars['alpha']
+        
+        Ez = (self.cosmo.H(self.z)/self.cosmo.H0).to(u.dimensionless_unscaled).value
+        mass  = self.mass.to(u.M_sun).value/3.00E+14
+
+        beta  = self.pars['beta0']*(mass**self.pars['beta1'])*(Ez**self.pars['beta2'])
+        gamma = self.pars['gamma0']*(mass**self.pars['gamma1'])*(Ez**self.pars['gamma2'])
+
+        c500 = self.pars['c500']
+
+        p500  = 1.65E-03
+        p500 *= mass**(2.00/3.00+self.pars['ap'])
+        p500 *= Ez**(8.00/3.00+self.pars['cp'])
+        
+        factor1 = c500**gamma
+        factor1 = factor1/(c500*x)**gamma
+
+        factor2 = (1.00+c500**alpha)**((beta-gamma)/alpha)
+        factor2 = factor2/(1.00+(c500*x)**alpha)**((beta-gamma)/alpha)
+    
+        return self.pars['pnorm']*p500*factor1*factor2
+    
+
+# General self-similar model
+# ------------------------------------------------------------------------------
+class GSS(Pressure):
+    def __init__(self,model,**kwargs):
+        super().__init__(model,**kwargs)
+
+    def profile(self,x):
+        alpha = self.pars['alpha']
+        beta  = self.pars['beta']
+        gamma = self.pars['gamma']
+        c500  = self.pars['c500']
+
+        Hz    = self.cosmo.H(self.z)
+
+        p500  = (3.00/8.00/np.pi)*self.pars['fb']*self.pars['mu']/self.pars['mue']
+        p500 *= (2.50E+02*(Hz**2)/const.G**0.25)**(4.00/3.00)
+        p500 *= (self.m500.to(u.M_sun).value/1.00E+15)**(2.00/3.00)
+        p500  = p500.to(u.keV/u.cm**3).value*1.00E+10
+
+        factor1 = 1.00/(c500*x)**gamma
+        factor2 = (1.00+((c500*x)**alpha))**((gamma-beta)/alpha)
+
+        factor3 = (self.m500.to(u.M_sun).value/3.00E+14)*(self.cosmo.H0.value/70.00)
+        factor3 = factor3**self.pars['ap']
+        
+        return self.pars['pnorm']*p500*factor1*factor2*factor3
+
+
+# McDonald+2014 models
+# ------------------------------------------------------------------------------
+class M14(GSS):
+    def __init__(self,model='up',**kwargs):
+        super().__init__(f'M14_{model}',**kwargs)
+
+        if   model=='up': # McDonald+2014 universal
+            self.pars.update(dict(alpha = 2.2700E+00, beta = 3.4800E+00, gamma =  1.5000E-01,
+                                  pnorm = 3.4700E+00, c500 = 2.5900E+00, ap    =  1.2000E-01))
+        elif model=='cc': # McDonald+2014 cool core
+            self.pars.update(dict(alpha = 2.3000E+00, beta = 3.3400E+00, gamma =  2.1000E-01,
+                                  pnorm = 3.7000E+00, c500 = 2.8000E+00, ap    =  1.2000E-01))
+        elif model=='nc': # McDonald+2014 non-cool core
+            self.pars.update(dict(alpha = 1.7000E+00, beta = 5.7400E+00, gamma =  0.5000E-01,
+                                  pnorm = 3.9100E+00, c500 = 1.5000E+00, ap    =  1.2000E-01))
+
+# Melin+2023
+# ------------------------------------------------------------------------------
+class M23(GSS):
+    def __init__(self,model='up',**kwargs):
+        super().__init__(f'M23_{model}',**kwargs)
+
+        if model=='up':
+            self.pars.update(dict(alpha = 1.0500E+00, beta = 6.3200E+00, gamma =  7.1000E-01,
+                                  pnorm =   10**0.23, c500 = 6.1000E-01,    ap =  1.2000E-01))
+
+# Sayers+2023
+# ------------------------------------------------------------------------------
+class S23(GSS):
+    def __init__(self,model='up',**kwargs):
+        super().__init__(f'S23_{model}',**kwargs)
+
+        if model=='up':
+            self.pars.update(dict(alpha0 = 1.20E-01,
+                                  alpha1 = 1.20E-01))
