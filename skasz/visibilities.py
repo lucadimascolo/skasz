@@ -52,7 +52,7 @@ polarisation_frame = PolarisationFrame('stokesI')
 # Main visibility builder
 # ------------------------------------------------------------------------------
 class Visibility:
-    def __init__(self,config='AA4',rmax=None,context='2d',obs=None,**kwargs):
+    def __init__(self,config='AA4_15m',rmax=None,context='2d',obs=None,**kwargs):
         self.config = midsub[config]
     
         self.obs = None

@@ -17,6 +17,8 @@ from skasz import utils
 import time
 import matplotlib.pyplot as plt
 
+n_, eps_ = 100, 1.00E-04
+
 # Unit conversions
 # ==============================================================================
 Tcmb  = 2.7255*u.Kelvin
@@ -127,7 +129,16 @@ class Pressure:
         self.m500 = kwargs.get('m500',None)
         self.z    = kwargs.get('z',None)
 
-        self.method = kwargs.get('method','fixed')
+        if 'method' in kwargs:
+            method = kwargs['method']
+            if isinstance(method,str):
+                self.method = dict(name=method,n=n_,eps=eps_)
+            elif isinstance(method,dict):
+                self.method = dict(name = method.get('name','fixed'),
+                                      n = method.get('n',n_),
+                                    eps = method.get('eps',eps_))
+        else:
+            self.method = dict(name='fixed',n=n_,eps=eps_)
         
         if self.m500 is not None and self.z is not None:
             self.__call__(**kwargs)
@@ -141,11 +152,11 @@ class Pressure:
                     float64(float64,float64)],forceobj=True)
         def _intfoo(r,rmax):
             if   self.method['name']=='quad':
-                eps = self.method.get('eps',1.00E-04)
+                eps = self.method.get('eps',eps_)
                 res, _ = scipy.integrate.quad(_intarg,r,rmax,args=(r,),epsrel=eps,epsabs=eps)
             elif self.method['name']=='fixed':
-                nquad = self.method.get('n',100)
-                res, _ = scipy.integrate.fixed_quad(_intarg,r,rmax,args=(r,),n=nquad)
+                n = self.method.get('n',n_)
+                res, _ = scipy.integrate.fixed_quad(_intarg,r,rmax,args=(r,),n=n)
             return res*2.00
         
         rcut = self.rval.r500<self.rmax.r500
