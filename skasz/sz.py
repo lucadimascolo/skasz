@@ -10,7 +10,7 @@ from astropy.cosmology import Planck18
 import numpy as np
 import scipy.integrate
 
-from numba import jit, vectorize, float32, float64
+from numba import jit, vectorize, float32, float64, int16
 
 from skasz import utils
 
@@ -77,7 +77,6 @@ def comptontovis(obs,hdu=None,vis=None,config='AA4',addnoise=False,**kwargs):
 
 # Pressure profiles
 # ==============================================================================
-
 # General radius class
 # ------------------------------------------------------------------------------
 class Radius:
@@ -128,23 +127,30 @@ class Pressure:
         self.m500 = kwargs.get('m500',None)
         self.z    = kwargs.get('z',None)
 
+        self.method = kwargs.get('method','fixed')
+        
         if self.m500 is not None and self.z is not None:
             self.__call__(**kwargs)
-            
+        
     def integrate(self):
         @jit(forceobj=True,cache=True)
         def _intarg(r,r0):
             return self.profile(r)*r/(r**2-r0**2)**0.50
         
-        @vectorize([float32(float32,float32,float32),
-                    float64(float64,float64,float64)],forceobj=True)
-        def _intfoo(r,rmax,eps):
-            res, _ = scipy.integrate.quad(_intarg,r,rmax,args=(r,),epsrel=eps,epsabs=eps)
+        @vectorize([float32(float32,float32),
+                    float64(float64,float64)],forceobj=True)
+        def _intfoo(r,rmax):
+            if   self.method['name']=='quad':
+                eps = self.method.get('eps',1.00E-04)
+                res, _ = scipy.integrate.quad(_intarg,r,rmax,args=(r,),epsrel=eps,epsabs=eps)
+            elif self.method['name']=='fixed':
+                nquad = self.method.get('n',100)
+                res, _ = scipy.integrate.fixed_quad(_intarg,r,rmax,args=(r,),n=nquad)
             return res*2.00
         
         rcut = self.rval.r500<self.rmax.r500
         result = np.zeros_like(self.rval.r500)
-        result[rcut] = _intfoo(self.rval.r500[rcut],self.rmax.r500,1.00E-03)
+        result[rcut] = _intfoo(self.rval.r500[rcut],self.rmax.r500)
 
         result = result*(u.keV/u.cm**3)*self.r500.kpc*ynorm
         return result.to(u.dimensionless_unscaled).value
@@ -208,10 +214,10 @@ class A10(Pressure):
                              pnorm = 8.4030E+00, c500 = 1.1770E+00, ap    =  1.2000E-01)
         elif model=='cc': 
             self.pars = dict(alpha = 1.2223E+00, beta = 5.4905E+00, gamma =  7.7360E-01,
-                             pnorm = 3.2490E+00, c500 = 1.1280E+00, ap    = -1.0000E-01)
+                             pnorm = 3.2490E+00, c500 = 1.1280E+00, ap    =  1.2000E-01)
         elif model=='md':
             self.pars = dict(alpha = 1.4063E+00, beta = 5.4905E+00, gamma =  3.7980E-01,
-                             pnorm = 3.2020E+00, c500 = 1.0830E+00, ap    = -1.0000E-01)
+                             pnorm = 3.2020E+00, c500 = 1.0830E+00, ap    =  1.2000E-01)
             
         super().__init__(f'A10_{model}',**kwargs)
 
@@ -345,20 +351,45 @@ class GSS(Pressure):
         
         return self.pars['pnorm']*p500*factor1*factor2*factor3
 
+# Planck+2013 model
+# ------------------------------------------------------------------------------
+class P13(GSS):
+    def __init__(self,model='up',**kwargs):
+        if   model=='up': # Planck+2013 universal
+            self.pars = dict(alpha = 1.3300E+00, beta = 4.1300E+00, gamma =  3.1000E-01,
+                             pnorm = 6.4100E+00, c500 = 1.8100E+00, ap    =  1.2000E-01)
+        elif model=='cc': # Planck+2013 universal
+            self.pars = dict(alpha = 7.6000E-01, beta = 6.5800E+00, gamma =  3.1000E-01,
+                             pnorm = 1.1820E+01, c500 = 6.0000E-01, ap    =  1.2000E-01)
+        elif model=='nc': # Planck+2013 universal
+            self.pars = dict(alpha = 1.8200E+00, beta = 3.6200E+00, gamma =  3.1000E-01,
+                             pnorm = 4.7200E+00, c500 = 2.1900E+00, ap    =  1.2000E-01)
+
+        super().__init__(f'P13_{model}',**kwargs)
 
 # McDonald+2014 models
 # ------------------------------------------------------------------------------
 class M14(GSS):
-    def __init__(self,model='up',**kwargs):
-        if   model=='up': # McDonald+2014 universal
+    def __init__(self,model='up_hz',**kwargs):
+        if   model=='up_hz': # McDonald+2014 universal high-z
             self.pars = dict(alpha = 2.2700E+00, beta = 3.4800E+00, gamma =  1.5000E-01,
                              pnorm = 3.4700E+00, c500 = 2.5900E+00, ap    =  1.2000E-01)
-        elif model=='cc': # McDonald+2014 cool core
+        elif model=='cc_hz': # McDonald+2014 cool core high-z
             self.pars = dict(alpha = 2.3000E+00, beta = 3.3400E+00, gamma =  2.1000E-01,
                              pnorm = 3.7000E+00, c500 = 2.8000E+00, ap    =  1.2000E-01)
-        elif model=='nc': # McDonald+2014 non-cool core
-            self.pars = dict(alpha = 1.7000E+00, beta = 5.7400E+00, gamma =  0.5000E-01,
+        elif model=='nc_hz': # McDonald+2014 non-cool core high-z
+            self.pars = dict(alpha = 1.7000E+00, beta = 5.7400E+00, gamma =  5.0000E-02,
                              pnorm = 3.9100E+00, c500 = 1.5000E+00, ap    =  1.2000E-01)
+
+        elif model=='up_lz': # McDonald+2014 universal low-z
+            self.pars = dict(alpha = 1.6300E+00, beta = 3.3000E+00, gamma =  2.6000E-01,
+                             pnorm = 4.3300E+00, c500 = 2.5900E+00, ap    =  1.2000E-01)
+        elif model=='cc_lz': # McDonald+2014 cool core low-z
+            self.pars = dict(alpha = 2.3100E+00, beta = 2.6100E+00, gamma =  6.2000E-01,
+                             pnorm = 3.3900E+00, c500 = 3.4200E+00, ap    =  1.2000E-01)
+        elif model=='nc_lz': # McDonald+2014 non-cool core low-z
+            self.pars = dict(alpha = 1.2300E+00, beta = 7.5800E+00, gamma =  0.0000E+00,
+                             pnorm = 5.1000E+00, c500 = 8.8000E-01, ap    =  1.2000E-01)
 
         super().__init__(f'M14_{model}',**kwargs)
 
@@ -370,6 +401,41 @@ class M23(GSS):
             self.pars = dict(alpha = 1.0500E+00, beta = 6.3200E+00, gamma =  7.1000E-01,
                              pnorm =   10**0.23, c500 = 6.1000E-01,    ap =  1.2000E-01)
         super().__init__(f'M23_{model}',**kwargs)
+
+# Ghirardini+2019
+# ------------------------------------------------------------------------------
+class G19(Pressure):
+    def __init__(self,model='up',**kwargs):
+        if   model=='up': # Ghirardini+2014 universal
+            self.pars = dict(alpha = 1.3300E+00, beta = 4.4000E+00, gamma =  4.3000E-01,
+                             pnorm = 5.6800E+00, c500 = 1.4900E+00, ap    =  1.2000E-01)
+        elif model=='cc': # Ghirardini+2014 cool core
+            self.pars = dict(alpha = 1.3300E+00, beta = 4.3700E+00, gamma =  5.1000E-01,
+                             pnorm = 6.0300E+00, c500 = 1.6800E+00, ap    =  1.2000E-01)
+        elif model=='nc': # Ghirardini+2014 non-cool core
+            self.pars = dict(alpha = 1.3300E+00, beta = 4.0500E+00, gamma =  2.9000E-01,
+                             pnorm = 7.9600E+00, c500 = 1.7900E+00, ap    =  1.2000E-01)
+
+        super().__init__(f'G19_{model}',**kwargs)
+
+    def profile(self,x):
+        alpha = self.pars['alpha']
+        beta  = self.pars['beta']
+        gamma = self.pars['gamma']
+        c500  = self.pars['c500']
+
+        Ez = self.cosmo.H(self.z)/self.cosmo.H0
+        Ez = Ez.to(u.dimensionless_unscaled).value
+
+        p500  = 3.426E-03*(self.pars['fb']/0.16)*(self.pars['mu']/0.60)/(self.pars['mue']/1.14)
+        p500 *= Ez**(8.00/3.00)
+        p500 *= (self.m500.to(u.M_sun).value*self.cosmo.H0.value/70.00/1.00E+15)**(2.00/3.00)
+
+        factor1 = 1.00/(c500*x)**gamma
+        factor2 = (1.00+((c500*x)**alpha))**((gamma-beta)/alpha)
+
+        return self.pars['pnorm']*p500*factor1*factor2
+
 
 # Sayers+2023
 # ------------------------------------------------------------------------------

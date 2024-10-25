@@ -162,9 +162,6 @@ class Visibility:
         if rx_band is None:
             ValueError('No valid receiver band found. Please change the frequency range or specify a receiver band.')
 
-        #obstime = Time()
-        #el = self.phasecentre.transform_to(AltAz(obstime=obstime,location=midloc))
-
         noise = np.empty_like(self.vis['vis'].data)
 
         if eltype=='transit':
