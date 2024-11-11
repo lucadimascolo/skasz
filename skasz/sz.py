@@ -65,7 +65,7 @@ def comptontovis(obs,hdu=None,vis=None,config='AA4',addnoise=False,**kwargs):
         xpix = np.abs(hdu.header['CDELT1'])*u.deg
         ypix = np.abs(hdu.header['CDELT2'])*u.deg
         factor = scipy.integrate.quad(ytszToJyPix,x-0.50*bw,x+0.50*bw,args=(xpix,ypix))[0]
-        return factor/2.00/bw
+        return factor/bw
     
     conv = np.array([cfoo(f) for f in vis.frequency_channel_centers])
     hdu.data = hdu.data*conv[:,None,None,None]
