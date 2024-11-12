@@ -326,7 +326,7 @@ class Visibility:
 
   # Image visibilities
   # ------------------------------------------------------------------------------
-    def getimage(self,imsize,imcell=None,scale_factor=1.80,**kwargs):
+    def getimage(self,imsize,imcell=None,scale_factor=1.80,weighting='natural',**kwargs):
         advice = advise_wide_field(self.vis,guard_band_image=3.0,delA=0.1,facets=1, 
 		                           oversampling_synthesised_beam=4.0)
         if imcell is None: 
@@ -343,9 +343,9 @@ class Visibility:
         taper = kwargs.get('taper',None)
         if taper is not None:
             inpvis = taper_visibility_gaussian(inpvis,taper.to(u.rad).value)
-
-        self.dirty, self.sumwt = invert_ng(self.vis,model,context=self.context)
-        self.psf,            _ = invert_ng(self.vis,model,context=self.context,dopsf=True)
+                
+        self.dirty, self.sumwt = invert_ng(inpvis,model,context=self.context)
+        self.psf,            _ = invert_ng(inpvis,model,context=self.context,dopsf=True)
 
         return self.dirty.pixels.data, self.psf.pixels.data
 
