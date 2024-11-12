@@ -13,6 +13,7 @@ dependencies:
     - rascil
     - --extra-index-url https://artefact.skao.int/repository/pypi-internal/simpl
     - ska-ost-array-config
+    - radio-beam
     - typing-extensions
     - marshmallow
     - reproject

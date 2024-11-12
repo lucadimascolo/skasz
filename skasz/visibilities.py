@@ -17,6 +17,8 @@ from ska_sdp_func_python.sky_component import apply_beam_to_skycomponent
 from ska_sdp_func_python.imaging.dft import dft_kernel, extract_direction_and_flux
 from ska_sdp_func_python.imaging import invert_ng, predict_ng, create_image_from_visibility, advise_wide_field, taper_visibility_gaussian
 
+from ska_sdp_func_python.image.deconvolution import fit_psf
+
 from skasz.senscalc.mid.calculator import Calculator
 from skasz.senscalc.utilities import TelParams
 from skasz.senscalc.subarray import MIDArrayConfiguration
@@ -24,7 +26,9 @@ from skasz.senscalc.mid.sefd import SEFD_array
 
 from skasz.senscalc.mid.validation import BAND_LIMITS
 
-from ska_ost_array_config.array_config import MidSubArray, SubArray
+from ska_ost_array_config.array_config import MidSubArray
+
+from radio_beam import Beam
 
 midsub = {'AA*': {'config': MidSubArray(subarray_type='AA*').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AASTAR_ALL},
           'AA4': {'config': MidSubArray(subarray_type='AA4').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AA4_ALL},
@@ -95,8 +99,6 @@ class Visibility:
 	                 elevation_limit = kwargs.get('elevation_limit',None),
                   polarisation_frame = polarisation_frame,
                     integration_time = self.integration_time_seconds)
-
-        self.vis = self.vis.assign(_imaging_weight=self.vis.weight)
 
         advise = advise_wide_field(self.vis,guard_band_image=3.00,delA=0.1,facets=1, 
                                     oversampling_synthesised_beam=4.0)
@@ -326,7 +328,7 @@ class Visibility:
 
   # Image visibilities
   # ------------------------------------------------------------------------------
-    def getimage(self,imsize,imcell=None,scale_factor=1.80,weighting='natural',**kwargs):
+    def getimage(self,imsize,imcell=None,scale_factor=1.80,**kwargs):
         advice = advise_wide_field(self.vis,guard_band_image=3.0,delA=0.1,facets=1, 
 		                           oversampling_synthesised_beam=4.0)
         if imcell is None: 
@@ -346,6 +348,30 @@ class Visibility:
                 
         self.dirty, self.sumwt = invert_ng(inpvis,model,context=self.context)
         self.psf,            _ = invert_ng(inpvis,model,context=self.context,dopsf=True)
+      
+      # Beam modelling
+      # ----------------
+        uvdist = np.hypot(self.vis.visibility_acc.uvw_lambda[...,0],
+                          self.vis.visibility_acc.uvw_lambda[...,1])
+        ngcell = 0.125/uvdist.max()
+        ngsize = kwargs.get('ngsize',128)
+
+        ngbeam = create_image_from_visibility(self.vis,cellsize=ngcell,npixel=ngsize,
+                                              override_cellsize=kwargs.get('override_cellsize',False))
+        ngbeam,            _ = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)
+        
+        ngdict = fit_psf(ngbeam)
+
+        plt.subplot(121); plt.imshow(ngbeam.pixels.data[0,0],origin='lower')
+        self.beam = Beam(major = ngdict['bmaj']*u.deg,
+                         minor = ngdict['bmin']*u.deg,
+                            pa =  ngdict['bpa']*u.deg)
+
+        kern = self.beam.as_kernel(ngcell*u.rad) #,x_size=ngsize,y_size=ngsize)
+        plt.subplot(122); plt.imshow(kern.array,origin='lower')
+        plt.show(); plt.close()
+
+      # ----------------
 
         return self.dirty.pixels.data, self.psf.pixels.data
 
