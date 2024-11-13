@@ -104,9 +104,13 @@ class Radius:
 # ------------------------------------------------------------------------------
 class Pressure:
     allowed_models = [{'A10': ['up','cc','md']},
-                      {'M14': ['up','cc','nc']},
+                      {'P13': ['up','cc','nc']},
+                      {'M14': ['up_hz','cc_hz','nc_hz',
+                               'up_lz','cc_lz','nc_lz']},
                       {'L15': ['ref','8.0','8.5']},
-                      {'G17': ['ex','st']}]
+                      {'G17': ['ex','st']},
+                      {'M23': ['up']},
+                      {'S23': ['up']},]
 
     def __init__(self,model,**kwargs):
         self.cosmo = kwargs.get('cosmo',Planck18)
@@ -315,7 +319,7 @@ class G17(Pressure):
         alpha   = self.pars['alpha']
         
         Ez = (self.cosmo.H(self.z)/self.cosmo.H0).to(u.dimensionless_unscaled).value
-        mass  = self.mass.to(u.M_sun).value/3.00E+14
+        mass  = self.m500.to(u.M_sun).value/3.00E+14
 
         beta  = self.pars['beta0']*(mass**self.pars['beta1'])*(Ez**self.pars['beta2'])
         gamma = self.pars['gamma0']*(mass**self.pars['gamma1'])*(Ez**self.pars['gamma2'])
@@ -478,4 +482,4 @@ class S23(Pressure):
         factor1 = 1.00/(c500*x)**gamma
         factor2 = (1.00+((c500*x)**alpha))**((gamma-beta)/alpha)
 
-        return self.pars['pnorm']*factor1*factor2
+        return pnorm*factor1*factor2
