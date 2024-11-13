@@ -16,6 +16,7 @@ from ska_sdp_datamodels.image.image_create import create_image
 from ska_sdp_func_python.sky_component import apply_beam_to_skycomponent
 from ska_sdp_func_python.imaging.dft import dft_kernel, extract_direction_and_flux
 from ska_sdp_func_python.imaging import invert_ng, predict_ng, create_image_from_visibility, advise_wide_field, taper_visibility_gaussian
+from ska_sdp_func_python.imaging.weighting import weight_visibility
 
 from ska_sdp_func_python.image.deconvolution import fit_psf
 
@@ -328,7 +329,7 @@ class Visibility:
 
   # Image visibilities
   # ------------------------------------------------------------------------------
-    def getimage(self,imsize,imcell=None,scale_factor=1.80,**kwargs):
+    def getimage(self,imsize,imcell=None,scale_factor=1.80,weighting='natural',**kwargs):
         advice = advise_wide_field(self.vis,guard_band_image=3.0,delA=0.1,facets=1, 
 		                           oversampling_synthesised_beam=4.0)
         if imcell is None: 
@@ -339,13 +340,14 @@ class Visibility:
 
         model = create_image_from_visibility(self.vis,cellsize=imcell,npixel=imsize,
                                              override_cellsize=kwargs.get('override_cellsize',False))
-
+ 
         inpvis = self.vis
-        
+        inpvis = weight_visibility(inpvis,model,weighting=weighting,robustness=kwargs.get('robustness',1.00))
+
         taper = kwargs.get('taper',None)
         if taper is not None:
             inpvis = taper_visibility_gaussian(inpvis,taper.to(u.rad).value)
-                
+
         self.dirty, self.sumwt = invert_ng(inpvis,model,context=self.context)
         self.psf,            _ = invert_ng(inpvis,model,context=self.context,dopsf=True)
       
@@ -353,10 +355,10 @@ class Visibility:
       # ----------------
         uvdist = np.hypot(self.vis.visibility_acc.uvw_lambda[...,0],
                           self.vis.visibility_acc.uvw_lambda[...,1])
-        ngcell = 0.125/uvdist.max()
-        ngsize = kwargs.get('ngsize',128)
+        ngcell = kwargs.get('ngfact',0.125)/uvdist.max()
+        ngsize = kwargs.get('ngsize',512)
 
-        ngbeam = create_image_from_visibility(self.vis,cellsize=ngcell,npixel=ngsize,
+        ngbeam = create_image_from_visibility(inpvis,cellsize=ngcell,npixel=ngsize,
                                               override_cellsize=kwargs.get('override_cellsize',False))
         ngbeam,            _ = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)
         
@@ -367,7 +369,7 @@ class Visibility:
                          minor = ngdict['bmin']*u.deg,
                             pa =  ngdict['bpa']*u.deg)
 
-        kern = self.beam.as_kernel(ngcell*u.rad) #,x_size=ngsize,y_size=ngsize)
+        kern = self.beam.as_kernel(ngcell*u.rad,x_size=ngsize,y_size=ngsize)
         plt.subplot(122); plt.imshow(kern.array,origin='lower')
         plt.show(); plt.close()
 

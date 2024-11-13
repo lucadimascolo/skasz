@@ -11,6 +11,7 @@ def download_rascil_data():
     os.system('curl https://ska-telescope.gitlab.io/external/rascil-main/rascil_data.tgz -o rascil_data.tgz')
     os.system('tar -xzf rascil_data.tgz')
     os.system('mv data {0}'.format(RASCIL_DATA))
+    os.system('rm -vf rascil_data.tgz')
 
 
 if not os.path.exists(RASCIL_DATA):
