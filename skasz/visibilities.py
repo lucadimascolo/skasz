@@ -101,6 +101,8 @@ class Visibility:
                   polarisation_frame = polarisation_frame,
                     integration_time = self.integration_time_seconds)
 
+        self.vis = self.vis.assign(_imaging_weight=self.vis.weight)
+        
         advise = advise_wide_field(self.vis,guard_band_image=3.00,delA=0.1,facets=1, 
                                     oversampling_synthesised_beam=4.0)
         
