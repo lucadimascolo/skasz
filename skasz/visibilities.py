@@ -102,7 +102,7 @@ class Visibility:
                     integration_time = self.integration_time_seconds)
 
         self.vis = self.vis.assign(_imaging_weight=self.vis.weight)
-        
+
         advise = advise_wide_field(self.vis,guard_band_image=3.00,delA=0.1,facets=1, 
                                     oversampling_synthesised_beam=4.0)
         
@@ -366,14 +366,11 @@ class Visibility:
         
         ngdict = fit_psf(ngbeam)
 
-        plt.subplot(121); plt.imshow(ngbeam.pixels.data[0,0],origin='lower')
         self.beam = Beam(major = ngdict['bmaj']*u.deg,
                          minor = ngdict['bmin']*u.deg,
                             pa =  ngdict['bpa']*u.deg)
 
         kern = self.beam.as_kernel(ngcell*u.rad,x_size=ngsize,y_size=ngsize)
-        plt.subplot(122); plt.imshow(kern.array,origin='lower')
-        plt.show(); plt.close()
 
       # ----------------
 
