@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from astropy.coordinates import AltAz, SkyCoord
+from astropy.modeling import models, fitting
 from astropy.time import Time
 from astropy import constants as const
 from astropy import units as u
@@ -30,6 +31,8 @@ from skasz.senscalc.mid.validation import BAND_LIMITS
 from ska_ost_array_config.array_config import MidSubArray
 
 from radio_beam import Beam
+
+from .utils import hdu_from_obs
 
 midsub = {'AA*': {'config': MidSubArray(subarray_type='AA*').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AASTAR_ALL},
           'AA4': {'config': MidSubArray(subarray_type='AA4').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AA4_ALL},
@@ -357,24 +360,33 @@ class Visibility:
       # ----------------
         uvdist = np.hypot(self.vis.visibility_acc.uvw_lambda[...,0],
                           self.vis.visibility_acc.uvw_lambda[...,1])
-        ngcell = kwargs.get('ngfact',0.125)/uvdist.max()
+        ngcell = kwargs.get('ngfact',0.25)/uvdist.max()
         ngsize = kwargs.get('ngsize',512)
 
         ngbeam = create_image_from_visibility(inpvis,cellsize=ngcell,npixel=ngsize,
                                               override_cellsize=kwargs.get('override_cellsize',False))
-        ngbeam,            _ = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)
+        ngbeam = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)[0]
         
-        ngdict = fit_psf(ngbeam)
+        ngbeam, ngkern = getbeam(ngbeam.pixels.data[0,0])
+        
+        if ngkern>1:
+            ngarea = 0.00
+            ngnorm = 0.00
+            for ni in range(ngkern):
+                factor = eval(f'ngbeam.x_stddev_{ni}') * \
+                         eval(f'ngbeam.y_stddev_{ni}')
+                ngarea += eval(f'ngbeam.amplitude_{ni}')*2.00*np.pi*factor
+                ngnorm += eval(f'ngbeam.amplitude_{ni}')
 
-        self.beam = Beam(major = ngdict['bmaj']*u.deg,
-                         minor = ngdict['bmin']*u.deg,
-                            pa =  ngdict['bpa']*u.deg)
-
-        kern = self.beam.as_kernel(ngcell*u.rad,x_size=ngsize,y_size=ngsize)
+            self.beam_area = ngarea/ngnorm
+        else:
+            self.beam_area  = 2.00*np.pi*ngbeam.x_stddev*ngbeam.y_stddev
+        
+        self.beam_area *= (ngcell*u.rad)**2
 
       # ----------------
 
-        return self.dirty.pixels.data, self.psf.pixels.data
+        return self.dirty.pixels.data, self.psf.pixels.data, self.beam_area.to(u.sr)
 
   
   # Reset visibilities to zero
@@ -404,3 +416,63 @@ class Visibility:
 
         set_pb_header(beam, use_local=use_local)
         return beam
+
+
+# Build a model for the synthesized beam
+# ------------------------------------------------------------------------------
+def getbeam(data):
+    if True:
+        model = models.Gaussian2D(x_mean = 0.50*data.shape[1],
+                                y_mean = 0.50*data.shape[0])
+        
+        model.theta.min = -0.50*np.pi
+        model.theta.max =  0.50*np.pi
+
+        model.x_stddev.min = 1.00E-03
+        model.y_stddev.min = 1.00E-03
+        model.amplitude.min = 0.00
+
+    fitter = fitting.LevMarLSQFitter()
+
+    dg = data.copy()
+    yg, xg = np.mgrid[:dg.shape[0],:dg.shape[1]]
+
+    mg_out = fitter(model,xg,yg,dg)
+    mg_old = 0.00
+    mg_res = data-mg_out(xg,yg)
+    mg_mad = scipy.stats.median_abs_deviation(mg_res,scale='normal',axis=None)
+
+    failed = False
+
+    step = 1
+    while np.max(mg_res.max())>5.00*mg_mad \
+      and np.abs(mg_res.max()-mg_old)>0.01*mg_old \
+      and not failed:
+        mg_old = mg_res.max()
+        try:
+            mg_tmp = fitter(model,xg,yg,dg-mg_out(xg,yg))
+            mg_tmp = mg_tmp+mg_out
+
+            xtied = lambda model: model.x_mean_0
+            ytied = lambda model: model.y_mean_0
+
+            for si in range(1,step+1):
+                mg_par_x = eval(f'mg_tmp.x_mean_{si}')
+                mg_par_y = eval(f'mg_tmp.y_mean_{si}')
+                
+                mg_par_x.tied = xtied
+                mg_par_y.tied = ytied
+                
+                setattr(mg_tmp,f'x_mean_{si}',mg_par_x)
+                setattr(mg_tmp,f'y_mean_{si}',mg_par_y)
+
+            mg_out = fitter(mg_tmp,xg,yg,data)
+
+            mg_res = data-mg_out(xg,yg)
+            mg_mad = scipy.stats.median_abs_deviation(mg_res,scale='normal',axis=None)
+
+            step += 1
+        except:
+            failed = True
+
+    return mg_out, step
