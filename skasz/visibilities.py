@@ -366,9 +366,8 @@ class Visibility:
         ngbeam = create_image_from_visibility(inpvis,cellsize=ngcell,npixel=ngsize,
                                               override_cellsize=kwargs.get('override_cellsize',False))
         ngbeam = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)[0]
-        
         ngbeam, ngkern = getbeam(ngbeam.pixels.data[0,0])
-        
+    
         if ngkern>1:
             ngarea = 0.00
             ngnorm = 0.00
@@ -377,7 +376,6 @@ class Visibility:
                          eval(f'ngbeam.y_stddev_{ni}')
                 ngarea += eval(f'ngbeam.amplitude_{ni}')*2.00*np.pi*factor
                 ngnorm += eval(f'ngbeam.amplitude_{ni}')
-
             self.beam_area = ngarea/ngnorm
         else:
             self.beam_area  = 2.00*np.pi*ngbeam.x_stddev*ngbeam.y_stddev
@@ -423,7 +421,7 @@ class Visibility:
 def getbeam(data):
     if True:
         model = models.Gaussian2D(x_mean = 0.50*data.shape[1],
-                                y_mean = 0.50*data.shape[0])
+                                  y_mean = 0.50*data.shape[0])
         
         model.theta.min = -0.50*np.pi
         model.theta.max =  0.50*np.pi
