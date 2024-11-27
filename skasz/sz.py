@@ -48,6 +48,14 @@ def ytszToJyPix(freq,ipix,jpix):
     factor *= np.abs((ipix.to(u.rad)*jpix.to(u.rad)).value)
     return factor
 
+# Compton to Jy/beam
+# ------------------------------------------------------------------------------
+def ytszToJyBeam(freq,area):
+    x = getx(freq)
+    factor  = getJynorm()
+    factor *= -4.00+x/np.tanh(0.50*x)
+    factor *= (x**4)*np.exp(x)/(np.expm1(x)**2)
+    return factor*area.to(u.sr).value
 
 # Simulation 
 # ==============================================================================
