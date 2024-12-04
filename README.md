@@ -62,12 +62,13 @@ obs = Observation(start_frequency_hz = 1.20E+10,
 # generate (noise-free) mock observations
 vis = sz.comptontovis(hdu=hdu[0],obs=obs,config='AA4_15m')
 
-# produce dirty image and psf for the simulated visibilities
-dirty, psf = vis.getimage(imsize=hdu.header['NAXIS2'],imcell=hdu.header['CDELT2']*u.deg)
+# produce image products for the simulated visibilities
+# the output is an imageset class with (dirty,psf,pb,beam_area) attributes
+img_dirty = vis.getimage(imsize=hdu.header['NAXIS2'],imcell=hdu.header['CDELT2']*u.deg)
 
 # add noise based on the observation specifications
 vis.addnoise()
-noisy, psf = vis.getimage(imsize=hdu.header['NAXIS2'],imcell=hdu.header['CDELT2']*u.deg)
+img_noisy = vis.getimage(imsize=hdu.header['NAXIS2'],imcell=hdu.header['CDELT2']*u.deg)
 
 ```
 
