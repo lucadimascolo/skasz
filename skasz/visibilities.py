@@ -57,6 +57,16 @@ import warnings
 
 polarisation_frame = PolarisationFrame('stokesI')
 
+# Image constructor
+# ------------------------------------------------------------------------------
+class ImageSet:
+    def __init__(self,dirty,psf,pb,beam_area):
+        self.dirty = dirty
+        self.psf   = psf
+        self.pb    = pb
+
+        self.beam_area = beam_area
+
 # Main visibility builder
 # ------------------------------------------------------------------------------
 class Visibility:
@@ -68,7 +78,7 @@ class Visibility:
         self.sumwt = None
         self.dirty = None
 
-        self.pbeam = None
+        self.pbref = None
 
         self.context = context
 
@@ -120,7 +130,7 @@ class Visibility:
                               nchan = self.obs.number_of_channels,
                  polarisation_frame = polarisation_frame)
 
-        self.pbeam = {'MID': self.createpb(pbeam,    'MID',self.phasecentre,0.00,False),
+        self.pbref = {'MID': self.createpb(pbeam,    'MID',self.phasecentre,0.00,False),
                   'MEERKAT': self.createpb(pbeam,'MEERKAT',self.phasecentre,0.00,False),
                    'HYBRID': self.createpb(pbeam, 'HYBRID',self.phasecentre,0.00,False)}
         
@@ -222,7 +232,7 @@ class Visibility:
                              params = {})
 
         for ai, ant in enumerate(self.config['antlist']):
-            comp = apply_beam_to_skycomponent(skycomp,self.pbeam[ant])
+            comp = apply_beam_to_skycomponent(skycomp,self.pbref[ant])
 
             subvis = self.vis.sel(array=ant)
             direction_cosines, vfluxes = extract_direction_and_flux(comp,subvis)
@@ -382,9 +392,27 @@ class Visibility:
         
         self.beam_area *= (ngcell*u.rad)**2
 
+      # Compute avg. PB
       # ----------------
 
-        return self.dirty.pixels.data, self.psf.pixels.data, self.beam_area.to(u.sr)
+        self.pb = np.zeros(self.dirty.pixels.data.shape)
+        norm_pb = 0.00
+        for ai, ant in enumerate(self.config['antlist']):
+            pb = self.createpb(model,ant,self.phasecentre,0.00,False)
+
+            norm_ai  = np.count_nonzero(self.vis['array'].data==ant)
+            norm_pb += norm_ai
+            self.pb += pb.pixels.data.copy()*norm_ai
+            del norm_ai
+
+        self.pb = self.pb/norm_pb; del norm_pb
+
+      # ----------------
+
+        return ImageSet(dirty     = self.dirty.pixels.data.copy(),
+                        psf       = self.psf.pixels.data.copy(),
+                        pb        = self.pb.copy(),
+                        beam_area = self.beam_area.to(u.sr))
 
   
   # Reset visibilities to zero
@@ -392,7 +420,7 @@ class Visibility:
     def reset(self):
         self.vis['vis'].data = np.zeros(self.vis['vis'].data.shape,dtype=self.vis['vis'].data.dtype)
 
-    
+
   # Create PB model
   # ------------------------------------------------------------------------------
     def createpb(self,model,array='MID',pointingcentre=None,blockage=0.00,use_local=True):
