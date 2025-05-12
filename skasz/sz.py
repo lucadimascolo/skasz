@@ -294,7 +294,7 @@ class L15(Pressure):
         epsilon = self.pars['epsilon']
 
         c500  = self.pars['c500']*(self.m500.to(u.M_sun).value/1.00E+14)**delta
-        pnorm = self.pars['pnorm']*(self.m500.to(u.M_sun).value/1.00E+14)**delta
+        pnorm = self.pars['pnorm']*(self.m500.to(u.M_sun).value/1.00E+14)**epsilon
 
         Hz    = self.cosmo.H(self.z)
 
