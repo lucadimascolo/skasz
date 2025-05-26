@@ -28,17 +28,19 @@ from skasz.senscalc.mid.sefd import SEFD_array
 
 from skasz.senscalc.mid.validation import BAND_LIMITS
 
-from ska_ost_array_config.array_config import MidSubArray
+from ska_ost_array_config.array_config import MidSubArray, array_assembly
 
 from radio_beam import Beam
 
 from .utils import hdu_from_obs
 
+AAstar15m = array_assembly.MID_AA2+","+array_assembly.MID_MKAT_PLUS
+
 midsub = {'AA*': {'config': MidSubArray(subarray_type='AA*').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AASTAR_ALL},
           'AA4': {'config': MidSubArray(subarray_type='AA4').array_config, 'antlist': ['MEERKAT','MID','HYBRID'], 'sub': MIDArrayConfiguration.MID_AA4_ALL},
       'AA4_15m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'antlist': ['MID'], 'sub': MIDArrayConfiguration.MID_AA4_SKA_ONLY},
-      'AA4_13m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'antlist': ['MEERKAT'], 'sub': MIDArrayConfiguration.MID_AA4_MEERKAT_ONLY},
-      'AA*_15m': {'config': MidSubArray(subarray_type='custom',custom_stations='SKA*').array_config, 'antlist': ['MID'], 'sub': MIDArrayConfiguration.MID_AASTAR_SKA_ONLY}}
+      'AA4_13m': {'config': MidSubArray(subarray_type='custom',custom_stations='M*').array_config, 'antlist': ['MEERKAT'], 'sub': MIDArrayConfiguration.MID_AA4_MEERKAT_ONLY},
+      'AA*_15m': {'config': MidSubArray(subarray_type='custom',custom_stations=AAstar15m).array_config, 'antlist': ['MID'], 'sub': MIDArrayConfiguration.MID_AASTAR_SKA_ONLY}}
 
 from rascil.processing_components import plot_uvcoverage
 from rascil.processing_components.image.operations import polarisation_frame_from_wcs
