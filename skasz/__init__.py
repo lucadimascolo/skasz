@@ -2,7 +2,7 @@ import sys
 import os
 
 splist = sys.path
-splist = [s for s in splist if 'site-packages' in s][0]
+splist = [s for s in splist if 'site-packages' in s and os.path.exists(s+'/rascil')][0]
 
 RASCIL_DATA = '{0}/rascil/data'.format(splist)
 os.environ['RASCIL_DATA'] = RASCIL_DATA

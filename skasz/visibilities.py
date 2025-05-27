@@ -44,7 +44,11 @@ midsub = {'AA*': {'config': MidSubArray(subarray_type='AA*').array_config, 'antl
 
 from rascil.processing_components import plot_uvcoverage
 from rascil.processing_components.image.operations import polarisation_frame_from_wcs
-from rascil.processing_components.imaging.primary_beams import create_vp_generic, set_pb_header
+
+try:
+    from ska_sdp_func_python.imaging.primary_beams import create_vp_generic, set_pb_header
+except:
+    from rascil.processing_components.imaging.primary_beams import create_vp_generic, set_pb_header
 
 from skasz.senscalc.mid.calculator import Calculator
 
@@ -346,7 +350,7 @@ class Visibility:
 
   # Image visibilities
   # ------------------------------------------------------------------------------
-    def getimage(self,imsize,imcell=None,scale_factor=1.80,weighting='natural',**kwargs):
+    def getimage(self,imsize,imcell=None,scale_factor=1.80,weighting='natural',computebeam=True,**kwargs):
         advice = advise_wide_field(self.vis,guard_band_image=3.0,delA=0.1,facets=1, 
 		                           oversampling_synthesised_beam=4.0)
         if imcell is None: 
@@ -370,29 +374,32 @@ class Visibility:
       
       # Beam modelling
       # ----------------
-        uvdist = np.hypot(self.vis.visibility_acc.uvw_lambda[...,0],
-                          self.vis.visibility_acc.uvw_lambda[...,1])
-        ngcell = kwargs.get('ngfact',0.25)/uvdist.max()
-        ngsize = kwargs.get('ngsize',512)
+        if computebeam:
+            uvdist = np.hypot(self.vis.visibility_acc.uvw_lambda[...,0],
+                              self.vis.visibility_acc.uvw_lambda[...,1])
+            ngcell = kwargs.get('ngfact',0.25)/uvdist.max()
+            ngsize = kwargs.get('ngsize',512)
 
-        ngbeam = create_image_from_visibility(inpvis,cellsize=ngcell,npixel=ngsize,
-                                              override_cellsize=kwargs.get('override_cellsize',False))
-        ngbeam = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)[0]
-        ngbeam, ngkern = getbeam(ngbeam.pixels.data[0,0])
-    
-        if ngkern>1:
-            ngarea = 0.00
-            ngnorm = 0.00
-            for ni in range(ngkern):
-                factor = eval(f'ngbeam.x_stddev_{ni}') * \
-                         eval(f'ngbeam.y_stddev_{ni}')
-                ngarea += eval(f'ngbeam.amplitude_{ni}')*2.00*np.pi*factor
-                ngnorm += eval(f'ngbeam.amplitude_{ni}')
-            self.beam_area = ngarea/ngnorm
-        else:
-            self.beam_area  = 2.00*np.pi*ngbeam.x_stddev*ngbeam.y_stddev
+            ngbeam = create_image_from_visibility(inpvis,cellsize=ngcell,npixel=ngsize,
+                                                override_cellsize=kwargs.get('override_cellsize',False))
+            ngbeam = invert_ng(inpvis,ngbeam,context=self.context,dopsf=True)[0]
+            ngbeam, ngkern = getbeam(ngbeam.pixels.data[0,0])
         
-        self.beam_area *= (ngcell*u.rad)**2
+            if ngkern>1:
+                ngarea = 0.00
+                ngnorm = 0.00
+                for ni in range(ngkern):
+                    factor = eval(f'ngbeam.x_stddev_{ni}') * \
+                             eval(f'ngbeam.y_stddev_{ni}')
+                    ngarea += eval(f'ngbeam.amplitude_{ni}')*2.00*np.pi*factor
+                    ngnorm += eval(f'ngbeam.amplitude_{ni}')
+                self.beam_area = ngarea/ngnorm
+            else:
+                self.beam_area  = 2.00*np.pi*ngbeam.x_stddev*ngbeam.y_stddev
+            
+            self.beam_area *= (ngcell*u.rad)**2
+        else:
+            self.beam_area = 0.00*u.sr
 
       # Compute avg. PB
       # ----------------
