@@ -30,9 +30,8 @@ from skasz.senscalc.mid.validation import BAND_LIMITS
 
 from ska_ost_array_config.array_config import MidSubArray, array_assembly
 
-from radio_beam import Beam
-
 from .utils import hdu_from_obs
+import copy
 
 AAstar15m = array_assembly.MID_AA2+","+array_assembly.MID_MKAT_PLUS
 
@@ -66,10 +65,11 @@ polarisation_frame = PolarisationFrame('stokesI')
 # Image constructor
 # ------------------------------------------------------------------------------
 class ImageSet:
-    def __init__(self,dirty,psf,pb,beam_area):
-        self.dirty = dirty
-        self.psf   = psf
-        self.pb    = pb
+    def __init__(self,header,dirty,psf,pb,beam_area):
+        self.header = header
+        self.dirty  = dirty
+        self.psf    = psf
+        self.pb     = pb
 
         self.beam_area = beam_area
 
@@ -359,10 +359,10 @@ class Visibility:
         else:
             imcell = imcell.to(u.rad).value  
 
-        model = create_image_from_visibility(self.vis,cellsize=imcell,npixel=imsize,
+        model = create_image_from_visibility(self.vis,cellsize=imcell,npixel=imsize,nchan=1,
                                              override_cellsize=kwargs.get('override_cellsize',False))
- 
-        inpvis = self.vis
+
+        inpvis = copy.deepcopy(self.vis)
         inpvis = weight_visibility(inpvis,model,weighting=weighting,robustness=kwargs.get('robustness',1.00))
 
         taper = kwargs.get('taper',None)
@@ -417,8 +417,11 @@ class Visibility:
         self.pb = self.pb/norm_pb; del norm_pb
 
       # ----------------
+        
+        hdu = hdu_from_obs(self.obs,imsize,imcell*u.rad)
 
-        return ImageSet(dirty     = self.dirty.pixels.data.copy(),
+        return ImageSet(header    = hdu[0].header.copy(),
+                        dirty     = self.dirty.pixels.data.copy(),
                         psf       = self.psf.pixels.data.copy(),
                         pb        = self.pb.copy(),
                         beam_area = self.beam_area.to(u.sr))
